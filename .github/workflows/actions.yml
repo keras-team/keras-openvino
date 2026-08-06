@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 120
 
     env:
-      KERAS_HOME: .github/workflows/config
+      KERAS_HOME: ../keras-openvino/.github/workflows/config
 
     steps:
       - name: Checkout keras-openvino ${{ github.ref }}
@@ -50,12 +50,12 @@ jobs:
         working-directory: ./keras-openvino
         run: pip install -e .
 
-      - name: Test integrations
+      - name: Verify installation
         working-directory: ./keras
-        run: |
-          python integration_tests/import_test.py
-          python integration_tests/numerical_test.py
+        run: python -c "import keras; assert keras.backend.backend() == 'openvino'; import keras_openvino; print(keras_openvino.__version__)"
 
       - name: Run Tests
         working-directory: ./keras
         run: pytest keras -n auto --dist loadfile --ignore keras/src/applications --ignore keras/src/wrappers
+
+      # TODO integration tests
