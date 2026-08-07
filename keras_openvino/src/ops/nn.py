@@ -2,10 +2,13 @@ import numpy as np
 import openvino.opset16 as ov_opset
 from openvino import Type
 
-from keras.src import backend
 from keras.src.backend.common.backend_utils import (
     _get_output_shape_given_tf_padding,
 )
+from keras.src.backend.common.dtypes import result_type
+from keras.src.backend.common.variables import standardize_dtype
+from keras.src.backend.config import epsilon
+from keras.src.backend.config import floatx
 from keras.src.backend.config import standardize_data_format
 
 import keras_openvino.src.ops.numpy as onp
@@ -853,7 +856,7 @@ def one_hot(x, num_classes, axis=-1, dtype=None, sparse=False):
         raise ValueError("`sparse=True` is not supported with openvino backend")
     x = get_ov_output(x)
     if dtype is None:
-        dtype = backend.floatx()
+        dtype = floatx()
     ov_dtype = OPENVINO_DTYPES[dtype]
     on_value = get_ov_output(1, ov_dtype)
     off_value = get_ov_output(0, ov_dtype)
@@ -869,7 +872,7 @@ def one_hot(x, num_classes, axis=-1, dtype=None, sparse=False):
 
 def multi_hot(x, num_classes, axis=-1, dtype=None, sparse=False):
     reduction_axis = 1 if len(x.shape) > 1 else 0
-    if backend.standardize_dtype(dtype) == "bool":
+    if standardize_dtype(dtype) == "bool":
         outputs = one_hot(x, num_classes, axis=axis, dtype=dtype, sparse=sparse)
         result = ov_opset.reduce_logical_or(outputs, reduction_axis)
     else:
@@ -901,7 +904,7 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
         sum_result = ov_opset.reduce_sum(output, axis, keep_dims=True).output(0)
         output = ov_opset.divide(output, sum_result).output(0)
         output = ov_opset.clamp(
-            output, min_value=backend.epsilon(), max_value=1 - backend.epsilon()
+            output, min_value=epsilon(), max_value=1 - epsilon()
         ).output(0)
         log_prob = ov_opset.log(output).output(0)
     result = ov_opset.multiply(target, log_prob).output(0)
@@ -943,7 +946,7 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
         sum = ov_opset.reduce_sum(output, axis, keep_dims=True).output(0)
         output = ov_opset.divide(output, sum).output(0)
         output = ov_opset.clamp(
-            output, min_value=backend.epsilon(), max_value=1 - backend.epsilon()
+            output, min_value=epsilon(), max_value=1 - epsilon()
         ).output(0)
         log_prob = ov_opset.log(output).output(0)
 
@@ -991,7 +994,7 @@ def binary_crossentropy(target, output, from_logits=False):
         return OpenVINOKerasTensor(bce)
 
     output = ov_opset.clamp(
-        output, min_value=backend.epsilon(), max_value=1 - backend.epsilon()
+        output, min_value=epsilon(), max_value=1 - epsilon()
     ).output(0)
     one = ov_opset.constant(1, target.get_element_type()).output(0)
 
@@ -1086,7 +1089,7 @@ def ctc_loss(target, output, target_length, output_length, mask_index=0):
     ctc_loss_ = ov_opset.ctc_loss(
         output, output_length, target, target_length, blank_index=mask_index
     )
-    ctc_loss_ = ov_opset.convert(ctc_loss_, OPENVINO_DTYPES[backend.floatx()])
+    ctc_loss_ = ov_opset.convert(ctc_loss_, OPENVINO_DTYPES[floatx()])
     return OpenVINOKerasTensor(ctc_loss_.output(0))
 
 
@@ -1101,7 +1104,7 @@ def _ctc_greedy_decode(
         get_ov_output(sequence_lengths), Type.i32
     ).output(0)
 
-    dtype = backend.result_type(
+    dtype = result_type(
         ov_to_keras_type(inputs.get_element_type()), "float32"
     )
     ov_dtype = OPENVINO_DTYPES[dtype]
@@ -1248,7 +1251,7 @@ def dot_product_attention(
     key = get_ov_output(key)
     value = get_ov_output(value)
     if query.get_element_type() != key.get_element_type():
-        ov_type = OPENVINO_DTYPES[backend.floatx()]
+        ov_type = OPENVINO_DTYPES[floatx()]
         query = ov_opset.convert(query, ov_type).output(0)
         key = ov_opset.convert(key, ov_type).output(0)
     if value.get_element_type() != query.get_element_type():

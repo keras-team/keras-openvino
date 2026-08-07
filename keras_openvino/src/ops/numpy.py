@@ -644,9 +644,7 @@ def view(x, dtype=None):
          Float ↔ int reinterpretation on symbolic tensors is not
          supported because OpenVINO lacks a bitcast op.
     """
-    from keras.src import backend
-
-    new_dtype = backend.standardize_dtype(dtype) if dtype else None
+    new_dtype = standardize_dtype(dtype) if dtype else None
 
     # Fast path: plain numpy/scalar inputs
     if isinstance(x, np.ndarray):

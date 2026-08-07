@@ -4,9 +4,11 @@ import numpy as np
 import openvino.opset16 as ov_opset
 from openvino import Type
 
-from keras.src import backend
+from keras.src.backend.common.variables import is_float_dtype
 from keras.src.random.seed_generator import draw_seed
+from keras.src.backend.config import epsilon
 from keras.src.backend.config import standardize_data_format
+from keras.src.backend.common.dtypes import result_type
 
 from keras_openvino.src.utils import DTYPES_MAX
 from keras_openvino.src.utils import DTYPES_MIN
@@ -104,12 +106,12 @@ def rgb_to_hsv(images, data_format=None):
             "or rank 4 (batch of images). Received input with shape: "
             f"images.shape={images.shape}"
         )
-    if not backend.is_float_dtype(dtype):
+    if not is_float_dtype(dtype):
         raise ValueError(
             "Invalid images dtype: expected float dtype. "
             f"Received: images.dtype={dtype}"
         )
-    eps = ov_opset.constant(backend.epsilon(), dtype=ov_type).output(0)
+    eps = ov_opset.constant(epsilon(), dtype=ov_type).output(0)
     images = ov_opset.select(
         ov_opset.less(ov_opset.abs(images), eps),
         ov_opset.constant(0.0, dtype=ov_type),
@@ -198,7 +200,7 @@ def hsv_to_rgb(images, data_format=None):
             "or rank 4 (batch of images). Received input with shape: "
             f"images.shape={images.shape}"
         )
-    if not backend.is_float_dtype(dtype):
+    if not is_float_dtype(dtype):
         raise ValueError(
             "Invalid images dtype: expected float dtype. "
             f"Received: images.dtype={dtype}"
@@ -2058,7 +2060,7 @@ def scale_and_translate(
     images = convert_to_tensor(images)
     scale = convert_to_tensor(scale)
     translation = convert_to_tensor(translation)
-    dtype = backend.result_type(scale.dtype, translation.dtype)
+    dtype = result_type(scale.dtype, translation.dtype)
     scale = cast(scale, dtype)
     translation = cast(translation, dtype)
     kernel = _ov_kernels[method]
