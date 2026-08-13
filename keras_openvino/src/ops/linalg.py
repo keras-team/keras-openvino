@@ -1632,8 +1632,317 @@ def solve_triangular(a, b, lower=False):
     return OpenVINOKerasTensor(result)
 
 
+def _svd_round_robin_rounds(n):
+    # Tournament schedule: each round is a perfect matching of the columns,
+    # so its rotations are disjoint; all rounds together cover every pair.
+    players = list(range(n))
+    if n % 2 == 1:
+        players.append(-1)  # bye
+    m = len(players)
+    rounds = []
+    arr = players[:]
+    for _ in range(m - 1):
+        pairs = []
+        for i in range(m // 2):
+            a, b = arr[i], arr[m - 1 - i]
+            if a != -1 and b != -1:
+                pairs.append((min(a, b), max(a, b)))
+        if pairs:
+            rounds.append(pairs)
+        arr = [arr[0]] + [arr[-1]] + arr[1:-1]
+    return rounds
+
+
+def _svd_round_tables(n):
+    # A round rotates disjoint column pairs (p_j, q_j):
+    #     W'_p = cs_j * W_p - sn_j * W_q
+    #     W'_q = sn_j * W_p + cs_j * W_q
+    # which, for the whole matrix at once, is
+    #     W' = W * alpha + W[:, :, perm] * beta
+    # with alpha/beta gathered from concat([cs, 1]) / concat([-sn, sn, 0])
+    # by the constant maps below — no matmul, so a sweep stays O(n^3).
+    tables = []
+    for pairs in _svd_round_robin_rounds(n):
+        k = len(pairs)
+        p = np.array([pair[0] for pair in pairs], dtype=np.int32)
+        q = np.array([pair[1] for pair in pairs], dtype=np.int32)
+        perm = np.arange(n, dtype=np.int32)
+        perm[p], perm[q] = q, p
+        map_a = np.full(n, k, dtype=np.int32)  # default -> trailing 1.0
+        map_b = np.full(n, 2 * k, dtype=np.int32)  # default -> trailing 0.0
+        map_a[p] = np.arange(k)
+        map_a[q] = np.arange(k)
+        map_b[p] = np.arange(k)  # -sn block
+        map_b[q] = k + np.arange(k)  # +sn block
+        tables.append((p, q, perm, map_a, map_b))
+    return tables
+
+
+def _svd_jacobi(A_ov, batch, n, work_type):
+    """One-sided Jacobi on batched (batch, n, n) input via one OV Loop.
+
+    Returns (W, V) with A = W @ V^T, the columns of W orthogonal
+    (W = U * diag(s)). The loop body is a single round with its pairing
+    tables gathered by the iteration counter, so the graph size is
+    independent of `n` (unrolling pays constant-folding cost per node).
+    """
+
+    def const_i32(v):
+        return ov_opset.constant(np.asarray(v, dtype=np.int32), Type.i32)
+
+    def const_f(v):
+        return ov_opset.constant(v, work_type)
+
+    V_init = ov_opset.broadcast(
+        ov_opset.constant(np.eye(n, dtype=np.float32), work_type),
+        const_i32([batch, n, n]),
+    ).output(0)
+
+    tables = _svd_round_tables(n)
+    if not tables:  # n == 1: nothing to rotate
+        return A_ov, V_init
+
+    # Empirically (numpy prototype) log2(n) + 3 sweeps keep f32 singular
+    # values at ~1e-5.
+    sweeps = max(6, int(np.ceil(np.log2(max(n, 2)))) + 3)
+
+    loop = ov_opset.loop(
+        const_i32(sweeps * len(tables)),
+        ov_opset.constant(True, Type.boolean),
+    )
+
+    W_param = ov_opset.parameter([batch, n, n], work_type, "W")
+    V_param = ov_opset.parameter([batch, n, n], work_type, "V")
+    i_param = ov_opset.parameter([], Type.i32, "i")
+
+    zero_s = ov_opset.constant(0, Type.i32)
+    one_s = ov_opset.constant(1, Type.i32)
+    axis1 = one_s
+    axis2 = ov_opset.constant(2, Type.i32)
+
+    # Tables tiled across sweeps so row `i` of each is round `i`'s table.
+    p, q, perm, map_a, map_b = (
+        ov_opset.gather(
+            const_i32(np.tile(np.stack(rows), (sweeps, 1))), i_param, zero_s
+        )
+        for rows in zip(*tables)
+    )
+
+    tiny = const_f(np.finfo(np.float32).tiny)
+    one = const_f(1.0)
+    zero = const_f(0.0)
+    two = const_f(2.0)
+    couple_tol = const_f(1e-7)
+    ones_col = const_f(np.ones((batch, 1), dtype=np.float32))
+    zeros_col = const_f(np.zeros((batch, 1), dtype=np.float32))
+
+    def _abs(v):
+        # Not ov_opset.abs: OpenVINO folds Abs(Subtract(const, const)) away
+        # on 1-D shapes, silently returning the signed value.
+        return ov_opset.maximum(v, ov_opset.negative(v))
+
+    Wp = ov_opset.gather(W_param, p, axis2)
+    Wq = ov_opset.gather(W_param, q, axis2)
+    a = ov_opset.reduce_sum(ov_opset.multiply(Wp, Wp), axis1, False)
+    b = ov_opset.reduce_sum(ov_opset.multiply(Wq, Wq), axis1, False)
+    c = ov_opset.reduce_sum(ov_opset.multiply(Wp, Wq), axis1, False)
+
+    abs_c = _abs(c)
+    c_safe = ov_opset.select(ov_opset.greater(abs_c, tiny), c, one)
+    # zeta = (b - a) / (2c); t = sign(zeta) / (|zeta| + sqrt(1 + zeta^2))
+    zeta = ov_opset.divide(
+        ov_opset.subtract(b, a), ov_opset.multiply(two, c_safe)
+    )
+    sign_z = ov_opset.select(
+        ov_opset.greater_equal(zeta, zero), one, ov_opset.negative(one)
+    )
+    t = ov_opset.divide(
+        sign_z,
+        ov_opset.add(
+            _abs(zeta),
+            ov_opset.sqrt(ov_opset.add(one, ov_opset.multiply(zeta, zeta))),
+        ),
+    )
+    cs = ov_opset.divide(
+        one, ov_opset.sqrt(ov_opset.add(one, ov_opset.multiply(t, t)))
+    )
+    sn = ov_opset.multiply(cs, t)
+
+    # Already-orthogonal pairs keep an identity rotation.
+    rotate = ov_opset.greater(
+        abs_c,
+        ov_opset.multiply(ov_opset.sqrt(ov_opset.multiply(a, b)), couple_tol),
+    )
+    cs = ov_opset.select(rotate, cs, one)
+    sn = ov_opset.select(rotate, sn, zero)
+
+    cs_ext = ov_opset.concat([cs, ones_col], axis=1)
+    sn_signed = ov_opset.concat([ov_opset.negative(sn), sn, zeros_col], axis=1)
+    alpha = ov_opset.unsqueeze(ov_opset.gather(cs_ext, map_a, axis1), axis1)
+    beta = ov_opset.unsqueeze(ov_opset.gather(sn_signed, map_b, axis1), axis1)
+
+    def _rotate(M):
+        return ov_opset.add(
+            ov_opset.multiply(M, alpha),
+            ov_opset.multiply(ov_opset.gather(M, perm, axis2), beta),
+        )
+
+    W_next = _rotate(W_param).output(0)
+    V_next = _rotate(V_param).output(0)
+    i_next = ov_opset.add(i_param, one_s).output(0)
+    cond_next = ov_opset.constant(True, Type.boolean).output(0)
+
+    body_model = ov.Model(
+        [cond_next, W_next, V_next, i_next],
+        [W_param, V_param, i_param],
+        "jacobi_svd_round",
+    )
+    loop.set_function(body_model)
+    loop.set_special_body_ports([-1, 0])
+    loop.set_merged_input(W_param, A_ov, W_next)
+    loop.set_merged_input(V_param, V_init, V_next)
+    loop.set_merged_input(i_param, zero_s.output(0), i_next)
+
+    W_out = loop.get_iter_value(W_next, -1)
+    V_out = loop.get_iter_value(V_next, -1)
+    return W_out, V_out
+
+
 def svd(x, full_matrices=True, compute_uv=True):
-    raise NotImplementedError("`svd` is not supported with openvino backend")
+    # One-sided Jacobi (see `_svd_jacobi`); non-square inputs are first
+    # reduced with QR so the iteration runs on the small square factor.
+    # OpenVINO has no native SVD op.
+    x = convert_to_tensor(x)
+    x_ov = get_ov_output(x)
+    orig_type = x_ov.get_element_type()
+    work_type = Type.f32
+    if orig_type != work_type:
+        x_ov = ov_opset.convert(x_ov, work_type).output(0)
+
+    pshape = x_ov.get_partial_shape()
+    rank = pshape.rank.get_length()
+    if rank < 2:
+        raise ValueError(
+            "Expected input to have rank >= 2. "
+            f"Received input with shape {x.shape}."
+        )
+    if any(not pshape[i].is_static for i in range(rank)):
+        raise ValueError(
+            "`svd` requires a static input shape on the openvino backend. "
+            f"Received shape: {pshape}"
+        )
+    dims = [pshape[i].get_length() for i in range(rank)]
+    batch_dims, m, n = dims[:-2], dims[-2], dims[-1]
+    batch = int(np.prod(batch_dims)) if batch_dims else 1
+
+    def const_i32(v):
+        return ov_opset.constant(np.array(v, dtype=np.int32), Type.i32)
+
+    A = ov_opset.reshape(x_ov, const_i32([batch, m, n]), False).output(0)
+    transposed = m < n
+    if transposed:
+        A = ov_opset.transpose(A, const_i32([0, 2, 1])).output(0)
+        m, n = n, m
+
+    if m == n:
+        # Square: Jacobi runs on the input directly, no QR needed.
+        Q_ov = None
+        Rn = A
+    else:
+        Q_t, R_t = qr(
+            OpenVINOKerasTensor(A),
+            mode="complete" if (compute_uv and full_matrices) else "reduced",
+        )
+        Q_ov = get_ov_output(Q_t)
+        R_ov = get_ov_output(R_t)
+        if Q_ov.get_element_type() != work_type:
+            Q_ov = ov_opset.convert(Q_ov, work_type)
+            R_ov = ov_opset.convert(R_ov, work_type)
+        # Jacobi runs on the leading n x n block of R.
+        Rn = ov_opset.slice(
+            R_ov, const_i32([0]), const_i32([n]), const_i32([1]), const_i32([1])
+        ).output(0)
+
+    W, V = _svd_jacobi(Rn, batch, n, work_type)
+
+    axis1 = const_i32(1)
+    s = ov_opset.sqrt(
+        ov_opset.reduce_sum(ov_opset.multiply(W, W), axis1, False)
+    )
+
+    # Sort singular values descending; TopK also yields the column order.
+    topk = ov_opset.topk(
+        s,
+        ov_opset.constant(n, Type.i32),
+        axis=1,
+        mode="max",
+        sort="value",
+        index_element_type="i32",
+    )
+    s_sorted = topk.output(0)
+    order = topk.output(1)
+
+    def _restore_batch(t, *tail_dims):
+        return ov_opset.reshape(
+            t, const_i32(batch_dims + list(tail_dims)), False
+        ).output(0)
+
+    def _to_orig(t):
+        if orig_type != work_type:
+            return ov_opset.convert(t, orig_type).output(0)
+        return t
+
+    if not compute_uv:
+        return OpenVINOKerasTensor(_to_orig(_restore_batch(s_sorted, n)))
+
+    axis2 = const_i32(2)
+    Un = ov_opset.gather(W, order, axis2, batch_dims=1)
+    V = ov_opset.gather(V, order, axis2, batch_dims=1)
+    s_safe = ov_opset.maximum(
+        s_sorted, ov_opset.constant(np.finfo(np.float32).tiny, work_type)
+    )
+    Un = ov_opset.divide(Un, ov_opset.unsqueeze(s_safe, axis1))
+
+    if Q_ov is None:
+        U = Un
+    elif full_matrices:
+        # U = Q_complete @ blockdiag(Un, I_{m-n})
+        zeros_bottom = ov_opset.broadcast(
+            ov_opset.constant(0.0, work_type), const_i32([batch, m - n, n])
+        )
+        left = ov_opset.concat([Un, zeros_bottom], axis=1)
+        right_np = np.concatenate(
+            [
+                np.zeros((n, m - n), dtype=np.float32),
+                np.eye(m - n, dtype=np.float32),
+            ],
+            axis=0,
+        )
+        right = ov_opset.broadcast(
+            ov_opset.constant(right_np, work_type),
+            const_i32([batch, m, m - n]),
+        )
+        blk = ov_opset.concat([left, right], axis=2)
+        U = ov_opset.matmul(Q_ov, blk, False, False)
+    else:
+        U = ov_opset.matmul(Q_ov, Un, False, False)
+
+    vh = ov_opset.transpose(V, const_i32([0, 2, 1]))
+    if transposed:
+        U, vh = (
+            ov_opset.transpose(vh, const_i32([0, 2, 1])),
+            ov_opset.transpose(U, const_i32([0, 2, 1])),
+        )
+        u_shape = [n, n]
+        vh_shape = [m, m] if full_matrices else [n, m]
+    else:
+        u_shape = [m, m] if full_matrices else [m, n]
+        vh_shape = [n, n]
+    return (
+        OpenVINOKerasTensor(_to_orig(_restore_batch(U, *u_shape))),
+        OpenVINOKerasTensor(_to_orig(_restore_batch(s_sorted, n))),
+        OpenVINOKerasTensor(_to_orig(_restore_batch(vh, *vh_shape))),
+    )
 
 
 def lstsq(a, b, rcond=None):
