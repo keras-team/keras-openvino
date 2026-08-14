@@ -837,29 +837,30 @@ def cudnn_ok(*args, **kwargs):
     return False
 
 
-def _stack_states(fwd_state, bwd_state, axis1, weight_type):
+def _stack_states(fwd_state, bwd_state, weight_type):
     """Stack per-direction states into [batch, 2, hidden], converted to the
     weight dtype (the layer builds zero states with the input dtype, which
     can be integer)."""
+    axis1 = ov_opset.constant([1], dtype=Type.i32)
     parts = []
     for state in (fwd_state, bwd_state):
         state_ov = get_ov_output(state)
         if state_ov.get_element_type() != weight_type:
-            state_ov = ov_opset.convert(state_ov, weight_type).output(0)
-        parts.append(ov_opset.unsqueeze(state_ov, axis1).output(0))
-    return ov_opset.concat(parts, axis=1).output(0)
+            state_ov = ov_opset.convert(state_ov, weight_type)
+        parts.append(ov_opset.unsqueeze(state_ov, axis1))
+    return ov_opset.concat(parts, axis=1)
 
 
 def _bidi_split_outputs(seq_out, return_sequences):
     """Split bidirectional `Y` [batch, 2, time, hidden] into per-direction
     keras outputs. Backward outputs stay in original time order, which is
     what the fused-path contract in `layers.rnn.bidirectional` expects."""
-    axis1 = ov_opset.constant([1], dtype=Type.i32).output(0)
-    time_axis = ov_opset.constant(1, dtype=Type.i32).output(0)
-    dir_ax = ov_opset.constant(1, dtype=Type.i32).output(0)
-    zero = ov_opset.constant(0, dtype=Type.i32).output(0)
-    one = ov_opset.constant(1, dtype=Type.i32).output(0)
-    last = ov_opset.constant(-1, dtype=Type.i32).output(0)
+    axis1 = ov_opset.constant([1], dtype=Type.i32)
+    time_axis = ov_opset.constant(1, dtype=Type.i32)
+    dir_ax = ov_opset.constant(1, dtype=Type.i32)
+    zero = ov_opset.constant(0, dtype=Type.i32)
+    one = ov_opset.constant(1, dtype=Type.i32)
+    last = ov_opset.constant(-1, dtype=Type.i32)
 
     y_fwd = ov_opset.gather(seq_out, zero, dir_ax).output(0)
     y_bwd = ov_opset.gather(seq_out, one, dir_ax).output(0)
@@ -905,7 +906,7 @@ def bidirectional_lstm(
     fwd_kernel_ov = get_ov_output(fwd_kernel)
     weight_type = fwd_kernel_ov.get_element_type()
     if inputs_ov.get_element_type() != weight_type:
-        inputs_ov = ov_opset.convert(inputs_ov, weight_type).output(0)
+        inputs_ov = ov_opset.convert(inputs_ov, weight_type)
 
     hidden_size = (
         get_ov_output(fwd_recurrent_kernel).get_partial_shape()[0].get_length()
@@ -920,18 +921,12 @@ def bidirectional_lstm(
         get_ov_output(bwd_recurrent_kernel),
         get_ov_output(bwd_bias),
     )
-    w = ov_opset.concat([w_f, w_b], axis=0).output(0)
-    r = ov_opset.concat([r_f, r_b], axis=0).output(0)
-    b = ov_opset.concat([b_f, b_b], axis=0).output(0)
+    w = ov_opset.concat([w_f, w_b], axis=0)
+    r = ov_opset.concat([r_f, r_b], axis=0)
+    b = ov_opset.concat([b_f, b_b], axis=0)
 
-    axis1 = ov_opset.constant([1], dtype=Type.i32).output(0)
-
-    h0 = _stack_states(
-        fwd_initial_state_h, bwd_initial_state_h, axis1, weight_type
-    )
-    c0 = _stack_states(
-        fwd_initial_state_c, bwd_initial_state_c, axis1, weight_type
-    )
+    h0 = _stack_states(fwd_initial_state_h, bwd_initial_state_h, weight_type)
+    c0 = _stack_states(fwd_initial_state_c, bwd_initial_state_c, weight_type)
 
     seq_lens = _seq_lengths(inputs_ov)
     lstm_out = ov_opset.lstm_sequence(
@@ -942,9 +937,9 @@ def bidirectional_lstm(
         lstm_out.output(0), return_sequences
     )
 
-    dir_ax = ov_opset.constant(1, dtype=Type.i32).output(0)
-    zero = ov_opset.constant(0, dtype=Type.i32).output(0)
-    one = ov_opset.constant(1, dtype=Type.i32).output(0)
+    dir_ax = ov_opset.constant(1, dtype=Type.i32)
+    zero = ov_opset.constant(0, dtype=Type.i32)
+    one = ov_opset.constant(1, dtype=Type.i32)
     h_n = lstm_out.output(1)
     c_n = lstm_out.output(2)
     fwd_h_n = ov_opset.gather(h_n, zero, dir_ax).output(0)
@@ -995,7 +990,7 @@ def bidirectional_gru(
     fwd_kernel_ov = get_ov_output(fwd_kernel)
     weight_type = fwd_kernel_ov.get_element_type()
     if inputs_ov.get_element_type() != weight_type:
-        inputs_ov = ov_opset.convert(inputs_ov, weight_type).output(0)
+        inputs_ov = ov_opset.convert(inputs_ov, weight_type)
 
     hidden_size = (
         get_ov_output(fwd_recurrent_kernel).get_partial_shape()[0].get_length()
@@ -1010,12 +1005,11 @@ def bidirectional_gru(
         get_ov_output(bwd_recurrent_kernel),
         get_ov_output(bwd_bias),
     )
-    w = ov_opset.concat([w_f, w_b], axis=0).output(0)
-    r = ov_opset.concat([r_f, r_b], axis=0).output(0)
-    b = ov_opset.concat([b_f, b_b], axis=0).output(0)
+    w = ov_opset.concat([w_f, w_b], axis=0)
+    r = ov_opset.concat([r_f, r_b], axis=0)
+    b = ov_opset.concat([b_f, b_b], axis=0)
 
-    axis1 = ov_opset.constant([1], dtype=Type.i32).output(0)
-    h0 = _stack_states(fwd_initial_state, bwd_initial_state, axis1, weight_type)
+    h0 = _stack_states(fwd_initial_state, bwd_initial_state, weight_type)
 
     seq_lens = _seq_lengths(inputs_ov)
     gru_out = ov_opset.gru_sequence(
@@ -1034,9 +1028,9 @@ def bidirectional_gru(
         gru_out.output(0), return_sequences
     )
 
-    dir_ax = ov_opset.constant(1, dtype=Type.i32).output(0)
-    zero = ov_opset.constant(0, dtype=Type.i32).output(0)
-    one = ov_opset.constant(1, dtype=Type.i32).output(0)
+    dir_ax = ov_opset.constant(1, dtype=Type.i32)
+    zero = ov_opset.constant(0, dtype=Type.i32)
+    one = ov_opset.constant(1, dtype=Type.i32)
     h_n = gru_out.output(1)
     fwd_h_n = ov_opset.gather(h_n, zero, dir_ax).output(0)
     bwd_h_n = ov_opset.gather(h_n, one, dir_ax).output(0)
