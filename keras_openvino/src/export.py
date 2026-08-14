@@ -1,13 +1,13 @@
 import inspect
 
-from keras.src import tree
-from keras.src.export.export_utils import convert_spec_to_tensor
-from keras.src.export.saved_model_export_archive import SavedModelExportArchive
 import openvino as ov
 import openvino.opset16 as ov_opset
 
-from keras_openvino.src.utils import OPENVINO_DTYPES
+from keras.src import tree
+from keras.src.export.export_utils import convert_spec_to_tensor
+from keras.src.export.saved_model_export_archive import SavedModelExportArchive
 from keras_openvino.src.ops.core import OpenVINOKerasTensor
+from keras_openvino.src.utils import OPENVINO_DTYPES
 
 
 class OpenvinoExportArchive(SavedModelExportArchive):

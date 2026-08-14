@@ -2,6 +2,7 @@ import numpy as np
 import openvino.opset16 as ov_opset
 from openvino import Type
 
+import keras_openvino.src.ops.numpy as onp
 from keras.src.backend.common.backend_utils import (
     _get_output_shape_given_tf_padding,
 )
@@ -10,8 +11,6 @@ from keras.src.backend.common.variables import standardize_dtype
 from keras.src.backend.config import epsilon
 from keras.src.backend.config import floatx
 from keras.src.backend.config import standardize_data_format
-
-import keras_openvino.src.ops.numpy as onp
 from keras_openvino.src.ops.core import OPENVINO_DTYPES
 from keras_openvino.src.ops.core import OpenVINOKerasTensor
 from keras_openvino.src.ops.core import get_ov_output
@@ -1104,9 +1103,7 @@ def _ctc_greedy_decode(
         get_ov_output(sequence_lengths), Type.i32
     ).output(0)
 
-    dtype = result_type(
-        ov_to_keras_type(inputs.get_element_type()), "float32"
-    )
+    dtype = result_type(ov_to_keras_type(inputs.get_element_type()), "float32")
     ov_dtype = OPENVINO_DTYPES[dtype]
     inputs = ov_opset.convert(inputs, ov_dtype).output(0)
 

@@ -19,11 +19,10 @@ from keras.src.backend.common.backend_utils import slice_along_axis
 from keras.src.backend.common.dtypes import result_type
 from keras.src.backend.common.keras_tensor import KerasTensor
 from keras.src.backend.common.stateless_scope import StatelessScope
-
+from keras_openvino.src.utils import OPENVINO_DTYPES
 from keras_openvino.src.utils import align_operand_types
 from keras_openvino.src.utils import get_device
 from keras_openvino.src.utils import ov_to_keras_type
-from keras_openvino.src.utils import OPENVINO_DTYPES
 
 
 @contextlib.contextmanager

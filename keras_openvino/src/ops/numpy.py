@@ -11,19 +11,16 @@ from keras.src.backend.common import dtypes
 from keras.src.backend.common.backend_utils import canonicalize_axis
 from keras.src.backend.common.backend_utils import normalize_shift_and_axis
 from keras.src.backend.common.variables import standardize_dtype
-
+from keras_openvino.src.ops.core import OpenVINOKerasTensor
+from keras_openvino.src.ops.core import convert_to_tensor
+from keras_openvino.src.ops.core import get_ov_output
+from keras_openvino.src.ops.core import shape_to_ov_output
+from keras_openvino.src.ops.core import while_loop
 from keras_openvino.src.utils import DTYPES_MAX
 from keras_openvino.src.utils import DTYPES_MIN
 from keras_openvino.src.utils import OPENVINO_DTYPES
-from keras_openvino.src.ops.core import OpenVINOKerasTensor
-from keras_openvino.src.utils import (
-    align_operand_types as _align_operand_types,
-)
-from keras_openvino.src.ops.core import convert_to_tensor
-from keras_openvino.src.ops.core import get_ov_output
+from keras_openvino.src.utils import align_operand_types as _align_operand_types
 from keras_openvino.src.utils import ov_to_keras_type
-from keras_openvino.src.ops.core import shape_to_ov_output
-from keras_openvino.src.ops.core import while_loop
 
 
 def _promote_binary_op_types(x1, x2):

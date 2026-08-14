@@ -8,12 +8,11 @@ from keras.src.backend.config import floatx
 from keras.src.random.seed_generator import SeedGenerator  # noqa: F401
 from keras.src.random.seed_generator import draw_seed
 from keras.src.random.seed_generator import make_default_seed  # noqa: F401
-
 from keras_openvino.src.ops import numpy as ov_numpy
-from keras_openvino.src.utils import OPENVINO_DTYPES
 from keras_openvino.src.ops.core import OpenVINOKerasTensor
 from keras_openvino.src.ops.core import convert_to_numpy
 from keras_openvino.src.ops.core import get_ov_output
+from keras_openvino.src.utils import OPENVINO_DTYPES
 
 
 def _np_to_ov_const(arr):

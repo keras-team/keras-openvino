@@ -1,11 +1,11 @@
-from keras.src.backend.common import KerasVariable
 import openvino as ov
 import openvino.opset16 as ov_opset
 
+from keras.src.backend.common import KerasVariable
 from keras_openvino.src.ops.core import OpenVINOKerasTensor
-from keras_openvino.src.utils import OPENVINO_DTYPES
 from keras_openvino.src.ops.core import convert_to_numpy
 from keras_openvino.src.ops.core import convert_to_tensor
+from keras_openvino.src.utils import OPENVINO_DTYPES
 
 
 class Variable(KerasVariable):

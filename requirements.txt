@@ -4,3 +4,7 @@ openvino
 # Testing
 pytest
 pytest-xdist
+
+# Linting
+pre-commit
+ruff

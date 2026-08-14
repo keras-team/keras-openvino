@@ -1,9 +1,8 @@
-from keras.src.backend.common import dtypes
-
 import numpy as np
 import openvino as ov
 import openvino.opset16 as ov_opset
 
+from keras.src.backend.common import dtypes
 
 OPENVINO_DTYPES = {
     "float16": ov.Type.f16,

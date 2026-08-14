@@ -6,13 +6,12 @@ from openvino import Type
 
 from keras.src.backend.common import dtypes
 from keras.src.backend.common import standardize_dtype
-
-from keras_openvino.src.utils import OPENVINO_DTYPES
+from keras_openvino.src.ops import numpy as ov_numpy
 from keras_openvino.src.ops.core import OpenVINOKerasTensor
 from keras_openvino.src.ops.core import cast
 from keras_openvino.src.ops.core import get_ov_output
+from keras_openvino.src.utils import OPENVINO_DTYPES
 from keras_openvino.src.utils import ov_to_keras_type
-from keras_openvino.src.ops import numpy as ov_numpy
 
 INT32_MAX = 2**31 - 1
 

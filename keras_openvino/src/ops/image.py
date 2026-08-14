@@ -4,20 +4,19 @@ import numpy as np
 import openvino.opset16 as ov_opset
 from openvino import Type
 
+from keras.src.backend.common.dtypes import result_type
 from keras.src.backend.common.variables import is_float_dtype
-from keras.src.random.seed_generator import draw_seed
 from keras.src.backend.config import epsilon
 from keras.src.backend.config import standardize_data_format
-from keras.src.backend.common.dtypes import result_type
-
-from keras_openvino.src.utils import DTYPES_MAX
-from keras_openvino.src.utils import DTYPES_MIN
+from keras.src.random.seed_generator import draw_seed
 from keras_openvino.src.ops.core import OpenVINOKerasTensor
 from keras_openvino.src.ops.core import cast
 from keras_openvino.src.ops.core import convert_to_numpy
 from keras_openvino.src.ops.core import convert_to_tensor
 from keras_openvino.src.ops.core import get_ov_output
 from keras_openvino.src.random import _random_normal
+from keras_openvino.src.utils import DTYPES_MAX
+from keras_openvino.src.utils import DTYPES_MIN
 
 AFFINE_TRANSFORM_INTERPOLATIONS = {"nearest": 0, "bilinear": 1}
 AFFINE_TRANSFORM_FILL_MODES = {

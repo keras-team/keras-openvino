@@ -4,18 +4,17 @@ import openvino.opset16 as ov_opset
 
 from keras.src import callbacks as callbacks_module
 from keras.src import tree
-
-from keras_openvino.src.utils import OPENVINO_DTYPES
-from keras_openvino.src.ops.core import OpenVINOKerasTensor
-from keras_openvino.src.ops.core import convert_to_numpy
-from keras_openvino.src.utils import get_device
+from keras.src.backend.common.masking import get_keras_mask
+from keras.src.backend.common.masking import set_keras_mask
 from keras.src.trainers import trainer as base_trainer
 from keras.src.trainers.data_adapters import data_adapter_utils
 from keras.src.trainers.epoch_iterator import EpochIterator
 from keras.src.utils import traceback_utils
 from keras.src.utils.python_utils import pythonify_logs
-from keras.src.backend.common.masking import get_keras_mask
-from keras.src.backend.common.masking import set_keras_mask
+from keras_openvino.src.ops.core import OpenVINOKerasTensor
+from keras_openvino.src.ops.core import convert_to_numpy
+from keras_openvino.src.utils import OPENVINO_DTYPES
+from keras_openvino.src.utils import get_device
 
 
 class OpenVINOTrainer(base_trainer.Trainer):
