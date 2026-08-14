@@ -865,8 +865,7 @@ def _bidi_split_outputs(seq_out, return_sequences):
     y_fwd = ov_opset.gather(seq_out, zero, dir_ax).output(0)
     y_bwd = ov_opset.gather(seq_out, one, dir_ax).output(0)
 
-    # Forward "last" is the final timestep; backward "last" is timestep 0
-    # in original time order (the fully-accumulated reverse sweep).
+    # The reverse sweep runs t=T-1..0, so its final state is at index 0.
     fwd_last = ov_opset.gather(y_fwd, last, time_axis).output(0)
     bwd_last = ov_opset.gather(y_bwd, zero, time_axis).output(0)
 
