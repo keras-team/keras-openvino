@@ -1219,12 +1219,34 @@ def norm(x, ord=None, axis=None, keepdims=False):
                 row_sum, row_axis_const, keep_dims=keepdims
             ).output(0)
         elif ord in ("nuc", 2, -2):
-            # Nuclear norm, spectral norm, and minimum singular value
-            # These require SVD which is not supported in OpenVINO backend
-            raise NotImplementedError(
-                f"`norm` with ord={ord} for matrix norms requires SVD "
-                "which is not supported with openvino backend"
-            )
+            perm = [i for i in range(ndim) if i not in (row_axis, col_axis)]
+            perm += [row_axis, col_axis]
+            x_perm = x_ov
+            if perm != list(range(ndim)):
+                x_perm = ov_opset.transpose(
+                    x_ov, ov_opset.constant(np.array(perm, dtype=np.int32))
+                ).output(0)
+            s_t = svd(OpenVINOKerasTensor(x_perm), compute_uv=False)
+            s_ov = get_ov_output(s_t)
+            last_axis = ov_opset.constant([-1], Type.i32)
+            if ord == "nuc":
+                norm_result = ov_opset.reduce_sum(
+                    s_ov, last_axis, keep_dims=False
+                ).output(0)
+            elif ord == 2:
+                norm_result = ov_opset.reduce_max(
+                    s_ov, last_axis, keep_dims=False
+                ).output(0)
+            else:  # ord == -2
+                norm_result = ov_opset.reduce_min(
+                    s_ov, last_axis, keep_dims=False
+                ).output(0)
+            if keepdims:
+                unsq_axes = sorted((row_axis, col_axis))
+                norm_result = ov_opset.unsqueeze(
+                    norm_result,
+                    ov_opset.constant(np.array(unsq_axes, dtype=np.int32)),
+                ).output(0)
         else:
             raise ValueError(
                 f"Invalid `ord` argument for matrix norm. Received: ord={ord}"
