@@ -6,6 +6,7 @@ import keras_openvino.src.ops.numpy as onp
 from keras.src.backend.common.backend_utils import (
     _get_output_shape_given_tf_padding,
 )
+from keras.src.backend.common.backend_utils import canonicalize_axis
 from keras.src.backend.common.dtypes import result_type
 from keras.src.backend.common.variables import standardize_dtype
 from keras.src.backend.config import epsilon
@@ -167,6 +168,7 @@ def gelu(x, approximate=True):
 
 def glu(x, axis=-1):
     x = get_ov_output(x)
+    canonicalize_axis(axis, len(x.shape))
     half_splits = onp.split(x, 2, axis=axis)
     x1 = get_ov_output(half_splits[0])
     x2 = get_ov_output(half_splits[1])
