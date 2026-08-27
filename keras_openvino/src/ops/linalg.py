@@ -11,6 +11,7 @@ from keras.src.backend.common import dtypes
 from keras.src.backend.common.variables import standardize_dtype
 from keras_openvino.src.ops.core import OpenVINOKerasTensor
 from keras_openvino.src.ops.core import cast
+from keras_openvino.src.ops.core import convert_to_numpy
 from keras_openvino.src.ops.core import convert_to_tensor
 from keras_openvino.src.ops.core import get_ov_output
 
@@ -374,7 +375,36 @@ def det(a):
 
 
 def eig(a):
-    raise NotImplementedError("`eig` is not supported with openvino backend")
+    # Symmetric input only: general eigenpairs can be complex. The SVD's V
+    # holds the eigenvectors and diag(V^T a V) the eigenvalues.
+    a = convert_to_tensor(a)
+    a_ov = get_ov_output(a)
+    try:
+        a_np = convert_to_numpy(OpenVINOKerasTensor(a_ov))
+    except (RuntimeError, ValueError, TypeError):
+        a_np = None
+    if a_np is None or not np.allclose(
+        a_np, np.swapaxes(a_np, -1, -2), atol=1e-6
+    ):
+        raise NotImplementedError(
+            "`eig` on the openvino backend only supports symmetric matrices "
+            "known at model-build time; general matrices can have complex "
+            "eigenpairs and complex dtypes are not supported."
+        )
+
+    _, _, vh = svd(OpenVINOKerasTensor(a_ov))
+    vh_ov = get_ov_output(vh)
+    rank = vh_ov.get_partial_shape().rank.get_length()
+    perm = list(range(rank))
+    perm[-1], perm[-2] = perm[-2], perm[-1]
+    v = ov_opset.transpose(
+        vh_ov, ov_opset.constant(np.array(perm, dtype=np.int32))
+    ).output(0)
+    av = ov_opset.matmul(a_ov, v, False, False)
+    w = ov_opset.reduce_sum(
+        ov_opset.multiply(v, av), ov_opset.constant([-2], Type.i32), False
+    ).output(0)
+    return OpenVINOKerasTensor(w), OpenVINOKerasTensor(v)
 
 
 def eigh(a):

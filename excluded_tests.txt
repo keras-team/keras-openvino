@@ -1,5 +1,5 @@
 EqualizationTest::test_equalizes_to_all_bins
-LinalgOpsCorrectnessTest::test_eig
+LinalgOpsCorrectnessTest::test_eigh
 LinalgOpsCorrectnessTest::test_pinv_batched
 LinalgOpsCorrectnessTest::test_pinv_square_default_rcond
 LinalgOpsCorrectnessTest::test_pinv_tall_default_rcond
