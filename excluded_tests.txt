@@ -1,10 +1,5 @@
 EqualizationTest::test_equalizes_to_all_bins
 LinalgOpsCorrectnessTest::test_eigh
-LinalgOpsCorrectnessTest::test_pinv_batched
-LinalgOpsCorrectnessTest::test_pinv_square_default_rcond
-LinalgOpsCorrectnessTest::test_pinv_tall_default_rcond
-LinalgOpsCorrectnessTest::test_pinv_tall_explicit_rcond
-LinalgOpsCorrectnessTest::test_pinv_wide_default_rcond
 MathDtypeTest::test_gammainc
 MathOpsCorrectnessTest::test_erfinv_operation_basic
 MathOpsCorrectnessTest::test_erfinv_operation_dtype
