@@ -2188,7 +2188,47 @@ def matrix_power(a, n):
 
 
 def pinv(x, rcond=None):
-    raise NotImplementedError("`pinv` is not supported with openvino backend")
+    # Moore-Penrose inverse via SVD: pinv(x) = V diag(1/s) U^T with the
+    # singular values below `rcond * max(s)` zeroed, matching numpy.
+    x = convert_to_tensor(x)
+    u, s, vh = svd(x, full_matrices=False)
+    u_ov = get_ov_output(u)
+    s_ov = get_ov_output(s)
+    vh_ov = get_ov_output(vh)
+    work_type = s_ov.get_element_type()
+
+    if rcond is None:
+        # numpy default: largest matrix dimension times the dtype epsilon.
+        pshape = get_ov_output(x).get_partial_shape()
+        rank = pshape.rank.get_length()
+        m = pshape[rank - 2].get_length()
+        n = pshape[rank - 1].get_length()
+        rcond = max(m, n) * float(np.finfo(np.float32).eps)
+
+    s_max = ov_opset.reduce_max(s_ov, ov_opset.constant([-1], Type.i32), True)
+    cutoff = ov_opset.multiply(
+        ov_opset.constant(float(rcond), work_type), s_max
+    )
+    s_inv = ov_opset.select(
+        ov_opset.greater(s_ov, cutoff),
+        ov_opset.divide(ov_opset.constant(1.0, work_type), s_ov),
+        ov_opset.constant(0.0, work_type),
+    )
+
+    # pinv = (V * s_inv) @ U^T ; vh is V^T so V = vh^T.
+    s_inv_row = ov_opset.unsqueeze(s_inv, ov_opset.constant([-2], Type.i32))
+    scaled_vt = ov_opset.multiply(_transpose_last_two(vh_ov), s_inv_row)
+    result = ov_opset.matmul(scaled_vt, u_ov, False, True).output(0)
+    return OpenVINOKerasTensor(result)
+
+
+def _transpose_last_two(t):
+    rank = t.get_partial_shape().rank.get_length()
+    perm = list(range(rank))
+    perm[-1], perm[-2] = perm[-2], perm[-1]
+    return ov_opset.transpose(
+        t, ov_opset.constant(np.array(perm, dtype=np.int32))
+    )
 
 
 def jvp(fun, primals, tangents, has_aux=False):

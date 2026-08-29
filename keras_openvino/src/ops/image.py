@@ -1831,7 +1831,10 @@ def _ov_fill_triangle_kernel(x):
 
 def _ov_fill_keys_cubic_kernel(x):
     t = x.get_element_type()
-    c = lambda v: ov_opset.constant(v, dtype=t)
+
+    def c(v):
+        return ov_opset.constant(v, dtype=t)
+
     # out = ((1.5x - 2.5)x)x + 1.0
     out = ov_opset.add(
         ov_opset.multiply(
@@ -1865,7 +1868,10 @@ def _ov_fill_keys_cubic_kernel(x):
 
 def _ov_fill_lanczos_kernel(radius, x):
     t = x.get_element_type()
-    c = lambda v: ov_opset.constant(v, dtype=t)
+
+    def c(v):
+        return ov_opset.constant(v, dtype=t)
+
     pi_x = ov_opset.multiply(c(float(np.pi)), x).output(0)
     y = ov_opset.multiply(
         c(float(radius)),

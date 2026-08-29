@@ -531,44 +531,22 @@ def _seq_lengths(inputs_ov):
     return ov_opset.broadcast(time_steps, batch_size).output(0)
 
 
-def lstm(
-    inputs,
-    initial_h,
-    initial_c,
-    mask,
-    kernel,
-    recurrent_kernel,
-    bias,
-    activation,
-    recurrent_activation,
-    return_sequences=False,
-    go_backwards=False,
-    unroll=False,
-):
+def _check_fused_ok(activation, recurrent_activation, unroll, biases, mask):
     act_name = getattr(activation, "__name__", None)
     rec_act_name = getattr(recurrent_activation, "__name__", None)
     if not (
         act_name == "tanh"
         and rec_act_name == "sigmoid"
         and not unroll
-        and bias is not None
+        and all(b is not None for b in biases)
         and mask is None
     ):
         raise NotImplementedError
 
-    inputs_ov = get_ov_output(inputs)
-    initial_h_ov = get_ov_output(initial_h)
-    initial_c_ov = get_ov_output(initial_c)
-    kernel_ov = get_ov_output(kernel)
-    recurrent_kernel_ov = get_ov_output(recurrent_kernel)
-    bias_ov = get_ov_output(bias)
 
-    weight_type = kernel_ov.get_element_type()
-    if inputs_ov.get_element_type() != weight_type:
-        inputs_ov = ov_opset.convert(inputs_ov, weight_type).output(0)
-
-    hidden_size = recurrent_kernel_ov.get_partial_shape()[0].get_length()
-
+def _lstm_wrb(kernel_ov, recurrent_kernel_ov, bias_ov):
+    """Convert keras LSTM weights to `lstm_sequence` W, R, B for one
+    direction, each with a leading direction axis of size 1."""
     k_data = _try_eval_constant(kernel_ov)
     r_data = _try_eval_constant(recurrent_kernel_ov)
     b_data = _try_eval_constant(bias_ov)
@@ -620,6 +598,38 @@ def lstm(
         b = ov_opset.unsqueeze(
             b, ov_opset.constant([0], dtype=Type.i32).output(0)
         ).output(0)
+    return w, r, b
+
+
+def lstm(
+    inputs,
+    initial_h,
+    initial_c,
+    mask,
+    kernel,
+    recurrent_kernel,
+    bias,
+    activation,
+    recurrent_activation,
+    return_sequences=False,
+    go_backwards=False,
+    unroll=False,
+):
+    _check_fused_ok(activation, recurrent_activation, unroll, [bias], mask)
+
+    inputs_ov = get_ov_output(inputs)
+    initial_h_ov = get_ov_output(initial_h)
+    initial_c_ov = get_ov_output(initial_c)
+    kernel_ov = get_ov_output(kernel)
+    recurrent_kernel_ov = get_ov_output(recurrent_kernel)
+    bias_ov = get_ov_output(bias)
+
+    weight_type = kernel_ov.get_element_type()
+    if inputs_ov.get_element_type() != weight_type:
+        inputs_ov = ov_opset.convert(inputs_ov, weight_type).output(0)
+
+    hidden_size = recurrent_kernel_ov.get_partial_shape()[0].get_length()
+    w, r, b = _lstm_wrb(kernel_ov, recurrent_kernel_ov, bias_ov)
 
     h0 = ov_opset.unsqueeze(
         initial_h_ov, ov_opset.constant([1], dtype=Type.i32).output(0)
@@ -667,44 +677,10 @@ def lstm(
     )
 
 
-def gru(
-    inputs,
-    initial_state,
-    mask,
-    kernel,
-    recurrent_kernel,
-    bias,
-    activation,
-    recurrent_activation,
-    return_sequences=False,
-    go_backwards=False,
-    unroll=False,
-    reset_after=True,
-):
-    act_name = getattr(activation, "__name__", None)
-    rec_act_name = getattr(recurrent_activation, "__name__", None)
-    if not (
-        act_name == "tanh"
-        and rec_act_name == "sigmoid"
-        and not unroll
-        and bias is not None
-        and reset_after
-        and mask is None
-    ):
-        raise NotImplementedError
-
-    inputs_ov = get_ov_output(inputs)
-    initial_state_ov = get_ov_output(initial_state)
-    kernel_ov = get_ov_output(kernel)
-    recurrent_kernel_ov = get_ov_output(recurrent_kernel)
-    bias_ov = get_ov_output(bias)
-
-    weight_type = kernel_ov.get_element_type()
-    if inputs_ov.get_element_type() != weight_type:
-        inputs_ov = ov_opset.convert(inputs_ov, weight_type).output(0)
-
-    hidden_size = recurrent_kernel_ov.get_partial_shape()[0].get_length()
-
+def _gru_wrb(kernel_ov, recurrent_kernel_ov, bias_ov):
+    """Convert keras GRU weights to `gru_sequence` W, R, B for one
+    direction (linear_before_reset layout), each with a leading direction
+    axis of size 1."""
     k_data = _try_eval_constant(kernel_ov)
     r_data = _try_eval_constant(recurrent_kernel_ov)
     b_data = _try_eval_constant(bias_ov)
@@ -770,6 +746,39 @@ def gru(
         b = ov_opset.unsqueeze(
             b, ov_opset.constant([0], dtype=Type.i32).output(0)
         ).output(0)
+    return w, r, b
+
+
+def gru(
+    inputs,
+    initial_state,
+    mask,
+    kernel,
+    recurrent_kernel,
+    bias,
+    activation,
+    recurrent_activation,
+    return_sequences=False,
+    go_backwards=False,
+    unroll=False,
+    reset_after=True,
+):
+    if not reset_after:
+        raise NotImplementedError
+    _check_fused_ok(activation, recurrent_activation, unroll, [bias], mask)
+
+    inputs_ov = get_ov_output(inputs)
+    initial_state_ov = get_ov_output(initial_state)
+    kernel_ov = get_ov_output(kernel)
+    recurrent_kernel_ov = get_ov_output(recurrent_kernel)
+    bias_ov = get_ov_output(bias)
+
+    weight_type = kernel_ov.get_element_type()
+    if inputs_ov.get_element_type() != weight_type:
+        inputs_ov = ov_opset.convert(inputs_ov, weight_type).output(0)
+
+    hidden_size = recurrent_kernel_ov.get_partial_shape()[0].get_length()
+    w, r, b = _gru_wrb(kernel_ov, recurrent_kernel_ov, bias_ov)
 
     h0 = ov_opset.unsqueeze(
         initial_state_ov, ov_opset.constant([1], dtype=Type.i32).output(0)
@@ -828,9 +837,212 @@ def cudnn_ok(*args, **kwargs):
     return False
 
 
-def bidirectional_lstm(*args, **kwargs):
-    raise NotImplementedError
+def _stack_states(fwd_state, bwd_state, weight_type):
+    """Stack per-direction states into [batch, 2, hidden], converted to the
+    weight dtype (the layer builds zero states with the input dtype, which
+    can be integer)."""
+    axis1 = ov_opset.constant([1], dtype=Type.i32)
+    parts = []
+    for state in (fwd_state, bwd_state):
+        state_ov = get_ov_output(state)
+        if state_ov.get_element_type() != weight_type:
+            state_ov = ov_opset.convert(state_ov, weight_type)
+        parts.append(ov_opset.unsqueeze(state_ov, axis1))
+    return ov_opset.concat(parts, axis=1)
 
 
-def bidirectional_gru(*args, **kwargs):
-    raise NotImplementedError
+def _bidi_split_outputs(seq_out, return_sequences):
+    """Split bidirectional `Y` [batch, 2, time, hidden] into per-direction
+    keras outputs. Backward outputs stay in original time order, which is
+    what the fused-path contract in `layers.rnn.bidirectional` expects."""
+    axis1 = ov_opset.constant([1], dtype=Type.i32)
+    time_axis = ov_opset.constant(1, dtype=Type.i32)
+    dir_ax = ov_opset.constant(1, dtype=Type.i32)
+    zero = ov_opset.constant(0, dtype=Type.i32)
+    one = ov_opset.constant(1, dtype=Type.i32)
+    last = ov_opset.constant(-1, dtype=Type.i32)
+
+    y_fwd = ov_opset.gather(seq_out, zero, dir_ax).output(0)
+    y_bwd = ov_opset.gather(seq_out, one, dir_ax).output(0)
+
+    # The reverse sweep runs t=T-1..0, so its final state is at index 0.
+    fwd_last = ov_opset.gather(y_fwd, last, time_axis).output(0)
+    bwd_last = ov_opset.gather(y_bwd, zero, time_axis).output(0)
+
+    if return_sequences:
+        fwd_out, bwd_out = y_fwd, y_bwd
+    else:
+        fwd_out = ov_opset.unsqueeze(fwd_last, axis1).output(0)
+        bwd_out = ov_opset.unsqueeze(bwd_last, axis1).output(0)
+    return fwd_last, fwd_out, bwd_last, bwd_out
+
+
+def bidirectional_lstm(
+    inputs,
+    fwd_initial_state_h,
+    fwd_initial_state_c,
+    bwd_initial_state_h,
+    bwd_initial_state_c,
+    mask,
+    fwd_kernel,
+    fwd_recurrent_kernel,
+    fwd_bias,
+    bwd_kernel,
+    bwd_recurrent_kernel,
+    bwd_bias,
+    activation,
+    recurrent_activation,
+    return_sequences=False,
+    unroll=False,
+):
+    """Fused bidirectional LSTM via a single `lstm_sequence` op with
+    direction="bidirectional", instead of two unidirectional sweeps."""
+    _check_fused_ok(
+        activation, recurrent_activation, unroll, [fwd_bias, bwd_bias], mask
+    )
+
+    inputs_ov = get_ov_output(inputs)
+    fwd_kernel_ov = get_ov_output(fwd_kernel)
+    weight_type = fwd_kernel_ov.get_element_type()
+    if inputs_ov.get_element_type() != weight_type:
+        inputs_ov = ov_opset.convert(inputs_ov, weight_type)
+
+    hidden_size = (
+        get_ov_output(fwd_recurrent_kernel).get_partial_shape()[0].get_length()
+    )
+    w_f, r_f, b_f = _lstm_wrb(
+        fwd_kernel_ov,
+        get_ov_output(fwd_recurrent_kernel),
+        get_ov_output(fwd_bias),
+    )
+    w_b, r_b, b_b = _lstm_wrb(
+        get_ov_output(bwd_kernel),
+        get_ov_output(bwd_recurrent_kernel),
+        get_ov_output(bwd_bias),
+    )
+    w = ov_opset.concat([w_f, w_b], axis=0)
+    r = ov_opset.concat([r_f, r_b], axis=0)
+    b = ov_opset.concat([b_f, b_b], axis=0)
+
+    h0 = _stack_states(fwd_initial_state_h, bwd_initial_state_h, weight_type)
+    c0 = _stack_states(fwd_initial_state_c, bwd_initial_state_c, weight_type)
+
+    seq_lens = _seq_lengths(inputs_ov)
+    lstm_out = ov_opset.lstm_sequence(
+        inputs_ov, h0, c0, seq_lens, w, r, b, hidden_size, "bidirectional"
+    )
+
+    fwd_last, fwd_out, bwd_last, bwd_out = _bidi_split_outputs(
+        lstm_out.output(0), return_sequences
+    )
+
+    dir_ax = ov_opset.constant(1, dtype=Type.i32)
+    zero = ov_opset.constant(0, dtype=Type.i32)
+    one = ov_opset.constant(1, dtype=Type.i32)
+    h_n = lstm_out.output(1)
+    c_n = lstm_out.output(2)
+    fwd_h_n = ov_opset.gather(h_n, zero, dir_ax).output(0)
+    bwd_h_n = ov_opset.gather(h_n, one, dir_ax).output(0)
+    fwd_c_n = ov_opset.gather(c_n, zero, dir_ax).output(0)
+    bwd_c_n = ov_opset.gather(c_n, one, dir_ax).output(0)
+
+    return (
+        (
+            OpenVINOKerasTensor(fwd_last),
+            OpenVINOKerasTensor(fwd_out),
+            [OpenVINOKerasTensor(fwd_h_n), OpenVINOKerasTensor(fwd_c_n)],
+        ),
+        (
+            OpenVINOKerasTensor(bwd_last),
+            OpenVINOKerasTensor(bwd_out),
+            [OpenVINOKerasTensor(bwd_h_n), OpenVINOKerasTensor(bwd_c_n)],
+        ),
+    )
+
+
+def bidirectional_gru(
+    inputs,
+    fwd_initial_state,
+    bwd_initial_state,
+    mask,
+    fwd_kernel,
+    fwd_recurrent_kernel,
+    fwd_bias,
+    bwd_kernel,
+    bwd_recurrent_kernel,
+    bwd_bias,
+    activation,
+    recurrent_activation,
+    return_sequences=False,
+    unroll=False,
+    reset_after=True,
+):
+    """Fused bidirectional GRU via a single `gru_sequence` op with
+    direction="bidirectional". Mirrors `bidirectional_lstm`."""
+    if not reset_after:
+        raise NotImplementedError
+    _check_fused_ok(
+        activation, recurrent_activation, unroll, [fwd_bias, bwd_bias], mask
+    )
+
+    inputs_ov = get_ov_output(inputs)
+    fwd_kernel_ov = get_ov_output(fwd_kernel)
+    weight_type = fwd_kernel_ov.get_element_type()
+    if inputs_ov.get_element_type() != weight_type:
+        inputs_ov = ov_opset.convert(inputs_ov, weight_type)
+
+    hidden_size = (
+        get_ov_output(fwd_recurrent_kernel).get_partial_shape()[0].get_length()
+    )
+    w_f, r_f, b_f = _gru_wrb(
+        fwd_kernel_ov,
+        get_ov_output(fwd_recurrent_kernel),
+        get_ov_output(fwd_bias),
+    )
+    w_b, r_b, b_b = _gru_wrb(
+        get_ov_output(bwd_kernel),
+        get_ov_output(bwd_recurrent_kernel),
+        get_ov_output(bwd_bias),
+    )
+    w = ov_opset.concat([w_f, w_b], axis=0)
+    r = ov_opset.concat([r_f, r_b], axis=0)
+    b = ov_opset.concat([b_f, b_b], axis=0)
+
+    h0 = _stack_states(fwd_initial_state, bwd_initial_state, weight_type)
+
+    seq_lens = _seq_lengths(inputs_ov)
+    gru_out = ov_opset.gru_sequence(
+        inputs_ov,
+        h0,
+        seq_lens,
+        w,
+        r,
+        b,
+        hidden_size,
+        "bidirectional",
+        linear_before_reset=True,
+    )
+
+    fwd_last, fwd_out, bwd_last, bwd_out = _bidi_split_outputs(
+        gru_out.output(0), return_sequences
+    )
+
+    dir_ax = ov_opset.constant(1, dtype=Type.i32)
+    zero = ov_opset.constant(0, dtype=Type.i32)
+    one = ov_opset.constant(1, dtype=Type.i32)
+    h_n = gru_out.output(1)
+    fwd_h_n = ov_opset.gather(h_n, zero, dir_ax).output(0)
+    bwd_h_n = ov_opset.gather(h_n, one, dir_ax).output(0)
+
+    return (
+        (
+            OpenVINOKerasTensor(fwd_last),
+            OpenVINOKerasTensor(fwd_out),
+            [OpenVINOKerasTensor(fwd_h_n)],
+        ),
+        (
+            OpenVINOKerasTensor(bwd_last),
+            OpenVINOKerasTensor(bwd_out),
+            [OpenVINOKerasTensor(bwd_h_n)],
+        ),
+    )
