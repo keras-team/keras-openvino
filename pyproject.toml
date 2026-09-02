@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "keras-openvino"
 authors = [
-    {name = "OpenVINO Developers", email = "openvino@intel.com"},
+    {name = "Keras team", email = "keras-users@googlegroups.com"},
 ]
 description = "OpenVINO backend for Keras"
 readme = "README.md"
@@ -31,14 +31,11 @@ dependencies = [
 ]
 
 [project.urls]
-Home = "https://docs.openvino.ai/"
-Repository = "https://github.com/openvinotoolkit/keras-openvino/"
+Home = "https://keras.io/"
+Repository = "https://github.com/keras-team/keras-openvino/"
 
 [tool.setuptools.dynamic]
 version = {attr = "keras_openvino.src.version.__version__"}
-
-[tool.setuptools.package-dir]
-"" = "."
 
 [tool.ruff]
 line-length = 80
