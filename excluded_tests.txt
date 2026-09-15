@@ -1,6 +1,5 @@
 # Tests that are known not to pass with the openvino backend.
 # Each line is one full pytest node id, matched exactly.
-keras/src/layers/preprocessing/image_preprocessing/equalization_test.py::EqualizationTest::test_equalizes_to_all_bins
 keras/src/ops/linalg_test.py::LinalgOpsCorrectnessTest::test_eigh
 keras/src/ops/math_test.py::MathDtypeTest::test_gammainc_('bfloat16', 'float16')
 keras/src/ops/math_test.py::MathDtypeTest::test_gammainc_('bfloat16', 'float32')
