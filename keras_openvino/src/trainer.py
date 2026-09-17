@@ -6,9 +6,10 @@ from keras.src import callbacks as callbacks_module
 from keras.src import tree
 from keras.src.backend.common.masking import get_keras_mask
 from keras.src.backend.common.masking import set_keras_mask
-from keras.src.trainers import trainer as base_trainer
 from keras.src.trainers.data_adapters import data_adapter_utils
 from keras.src.trainers.epoch_iterator import EpochIterator
+from keras.src.trainers.trainer import BaseTrainer
+from keras.src.trainers.trainer import model_supports_jit
 from keras.src.utils import traceback_utils
 from keras.src.utils.python_utils import pythonify_logs
 from keras_openvino.src.ops.core import OpenVINOKerasTensor
@@ -17,7 +18,7 @@ from keras_openvino.src.utils import OPENVINO_DTYPES
 from keras_openvino.src.utils import get_device
 
 
-class OpenVINOTrainer(base_trainer.Trainer):
+class Trainer(BaseTrainer):
     def __init__(self):
         super().__init__()
         self.test_function = None
@@ -46,7 +47,7 @@ class OpenVINOTrainer(base_trainer.Trainer):
 
     def test_step(self, data):
         x, y, sample_weight = data_adapter_utils.unpack_x_y_sample_weight(data)
-        if not base_trainer.model_supports_jit(self):
+        if not model_supports_jit(self):
             if self._call_has_training_arg:
                 y_pred = self(x, training=False)
             else:
@@ -68,7 +69,7 @@ class OpenVINOTrainer(base_trainer.Trainer):
 
     def predict_step(self, data):
         x, _, _ = data_adapter_utils.unpack_x_y_sample_weight(data)
-        if not base_trainer.model_supports_jit(self):
+        if not model_supports_jit(self):
             if self._call_has_training_arg:
                 y_pred = self(x, training=False)
             else:

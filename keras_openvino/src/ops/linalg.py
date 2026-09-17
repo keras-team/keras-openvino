@@ -11,6 +11,7 @@ from keras.src.backend.common import dtypes
 from keras.src.backend.common.variables import standardize_dtype
 from keras_openvino.src.ops.core import OpenVINOKerasTensor
 from keras_openvino.src.ops.core import cast
+from keras_openvino.src.ops.core import convert_to_numpy
 from keras_openvino.src.ops.core import convert_to_tensor
 from keras_openvino.src.ops.core import get_ov_output
 
@@ -374,7 +375,36 @@ def det(a):
 
 
 def eig(a):
-    raise NotImplementedError("`eig` is not supported with openvino backend")
+    # Symmetric input only: general eigenpairs can be complex. The SVD's V
+    # holds the eigenvectors and diag(V^T a V) the eigenvalues.
+    a = convert_to_tensor(a)
+    a_ov = get_ov_output(a)
+    try:
+        a_np = convert_to_numpy(OpenVINOKerasTensor(a_ov))
+    except (RuntimeError, ValueError, TypeError):
+        a_np = None
+    if a_np is None or not np.allclose(
+        a_np, np.swapaxes(a_np, -1, -2), atol=1e-6
+    ):
+        raise NotImplementedError(
+            "`eig` on the openvino backend only supports symmetric matrices "
+            "known at model-build time; general matrices can have complex "
+            "eigenpairs and complex dtypes are not supported."
+        )
+
+    _, _, vh = svd(OpenVINOKerasTensor(a_ov))
+    vh_ov = get_ov_output(vh)
+    rank = vh_ov.get_partial_shape().rank.get_length()
+    perm = list(range(rank))
+    perm[-1], perm[-2] = perm[-2], perm[-1]
+    v = ov_opset.transpose(
+        vh_ov, ov_opset.constant(np.array(perm, dtype=np.int32))
+    ).output(0)
+    av = ov_opset.matmul(a_ov, v, False, False)
+    w = ov_opset.reduce_sum(
+        ov_opset.multiply(v, av), ov_opset.constant([-2], Type.i32), False
+    ).output(0)
+    return OpenVINOKerasTensor(w), OpenVINOKerasTensor(v)
 
 
 def eigh(a):
@@ -2056,30 +2086,29 @@ def lstsq(a, b, rcond=None):
 
 
 def matrix_rank(x, tol=None):
-    # Matrix rank requires SVD, which OpenVINO doesn't have. When the input
-    # is a Constant we can fall back to numpy and return the result as a
-    # Constant node — this covers the common case of computing the rank
-    # of a known matrix at model-build time. Runtime inputs (Parameters)
-    # remain unsupported until OpenVINO gains an SVD op.
-    x = convert_to_tensor(x)
-    if x.ndim < 2:
-        raise ValueError(
-            "Expected input to have rank >= 2. "
-            f"Received input with shape {x.shape}."
+    s_ov = get_ov_output(svd(x, compute_uv=False))
+    work_type = s_ov.get_element_type()
+    last_axis = ov_opset.constant([-1], Type.i32)
+
+    if tol is None:
+        # numpy's default, `max(M, N) * eps * largest_singular_value`. eps is
+        # f32's whatever the input dtype, since the Jacobi SVD iterates in f32.
+        pshape = get_ov_output(convert_to_tensor(x)).get_partial_shape()
+        rank = pshape.rank.get_length()
+        m = pshape[rank - 2].get_length()
+        n = pshape[rank - 1].get_length()
+        cutoff = ov_opset.multiply(
+            ov_opset.constant(
+                max(m, n) * float(np.finfo(np.float32).eps), work_type
+            ),
+            ov_opset.reduce_max(s_ov, last_axis, True),
         )
-    x_ov = get_ov_output(x)
-    x_node = x_ov.get_node()
-    if x_node.get_type_name() != "Constant":
-        raise NotImplementedError(
-            "`matrix_rank` on the OpenVINO backend only supports inputs "
-            "that fold to a constant at model-build time (e.g. numpy "
-            "arrays or pre-computed tensors). Runtime input is not "
-            "supported because OpenVINO has no SVD op."
-        )
-    rank_np = np.linalg.matrix_rank(np.asarray(x_node.data), tol=tol).astype(
-        "int32"
-    )
-    return OpenVINOKerasTensor(ov_opset.constant(rank_np).output(0))
+    else:
+        cutoff = ov_opset.constant(float(tol), work_type)
+
+    above = ov_opset.convert(ov_opset.greater(s_ov, cutoff), Type.i32)
+    result = ov_opset.reduce_sum(above, last_axis, False).output(0)
+    return OpenVINOKerasTensor(result)
 
 
 def matrix_power(a, n):
@@ -2158,7 +2187,47 @@ def matrix_power(a, n):
 
 
 def pinv(x, rcond=None):
-    raise NotImplementedError("`pinv` is not supported with openvino backend")
+    # Moore-Penrose inverse via SVD: pinv(x) = V diag(1/s) U^T with the
+    # singular values below `rcond * max(s)` zeroed, matching numpy.
+    x = convert_to_tensor(x)
+    u, s, vh = svd(x, full_matrices=False)
+    u_ov = get_ov_output(u)
+    s_ov = get_ov_output(s)
+    vh_ov = get_ov_output(vh)
+    work_type = s_ov.get_element_type()
+
+    if rcond is None:
+        # numpy default: largest matrix dimension times the dtype epsilon.
+        pshape = get_ov_output(x).get_partial_shape()
+        rank = pshape.rank.get_length()
+        m = pshape[rank - 2].get_length()
+        n = pshape[rank - 1].get_length()
+        rcond = max(m, n) * float(np.finfo(np.float32).eps)
+
+    s_max = ov_opset.reduce_max(s_ov, ov_opset.constant([-1], Type.i32), True)
+    cutoff = ov_opset.multiply(
+        ov_opset.constant(float(rcond), work_type), s_max
+    )
+    s_inv = ov_opset.select(
+        ov_opset.greater(s_ov, cutoff),
+        ov_opset.divide(ov_opset.constant(1.0, work_type), s_ov),
+        ov_opset.constant(0.0, work_type),
+    )
+
+    # pinv = (V * s_inv) @ U^T ; vh is V^T so V = vh^T.
+    s_inv_row = ov_opset.unsqueeze(s_inv, ov_opset.constant([-2], Type.i32))
+    scaled_vt = ov_opset.multiply(_transpose_last_two(vh_ov), s_inv_row)
+    result = ov_opset.matmul(scaled_vt, u_ov, False, True).output(0)
+    return OpenVINOKerasTensor(result)
+
+
+def _transpose_last_two(t):
+    rank = t.get_partial_shape().rank.get_length()
+    perm = list(range(rank))
+    perm[-1], perm[-2] = perm[-2], perm[-1]
+    return ov_opset.transpose(
+        t, ov_opset.constant(np.array(perm, dtype=np.int32))
+    )
 
 
 def jvp(fun, primals, tangents, has_aux=False):

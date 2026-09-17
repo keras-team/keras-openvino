@@ -5,21 +5,8 @@ import openvino.opset16 as ov_opset
 
 from keras.src import tree
 from keras.src.export.export_utils import convert_spec_to_tensor
-from keras.src.export.saved_model_export_archive import SavedModelExportArchive
 from keras_openvino.src.ops.core import OpenVINOKerasTensor
 from keras_openvino.src.utils import OPENVINO_DTYPES
-
-
-class OpenvinoExportArchive(SavedModelExportArchive):
-    def track(self, resource):
-        raise NotImplementedError(
-            "`track` is not implemented in the openvino backend."
-        )
-
-    def add_endpoint(self, name, fn, input_signature=None, **kwargs):
-        raise NotImplementedError(
-            "`add_endpoint` is not implemented in the openvino backend."
-        )
 
 
 def get_model_for_openvino_export(model, input_signature):
