@@ -9,6 +9,7 @@ from keras_openvino.src.variable import Variable
 SUPPORTS_SPARSE_TENSORS = False
 SUPPORTS_RAGGED_TENSORS = False
 SUPPORTS_COMPLEX_DTYPES = False
+SUPPORTS_GRADIENT = False
 IS_THREAD_SAFE = True
 
 distribution_lib = None
