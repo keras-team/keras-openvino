@@ -555,16 +555,16 @@ def argmax(x, axis=None, keepdims=False):
             [-1] + [1] * (rank - 1), Type.i32
         ).output(0)
         x = ov_opset.reshape(x, flatten_shape, False).output(0)
-        axis = 0
-        k = ov_opset.constant(1, Type.i32).output(0)
+        topk_axis = 0
+    elif axis < 0:
+        topk_axis = rank + axis
     else:
-        if axis < 0:
-            axis = rank + axis
-        k = ov_opset.constant(1, Type.i32).output(0)
+        topk_axis = axis
+    k = ov_opset.constant(1, Type.i32).output(0)
     topk_outputs = ov_opset.topk(
         x,
         k=k,
-        axis=axis,
+        axis=topk_axis,
         mode="max",
         sort="value",
         stable=True,
@@ -572,7 +572,10 @@ def argmax(x, axis=None, keepdims=False):
     )
     topk_indices = topk_outputs.output(1)
     if not keepdims:
-        topk_indices = ov_opset.squeeze(topk_indices, [axis]).output(0)
+        if axis is None:
+            topk_indices = ov_opset.squeeze(topk_indices).output(0)
+        else:
+            topk_indices = ov_opset.squeeze(topk_indices, [topk_axis]).output(0)
     return OpenVINOKerasTensor(topk_indices)
 
 
@@ -587,16 +590,16 @@ def argmin(x, axis=None, keepdims=False):
             [-1] + [1] * (rank - 1), Type.i32
         ).output(0)
         x = ov_opset.reshape(x, flatten_shape, False).output(0)
-        axis = 0
-        k = ov_opset.constant(1, Type.i32).output(0)
+        topk_axis = 0
+    elif axis < 0:
+        topk_axis = rank + axis
     else:
-        if axis < 0:
-            axis = rank + axis
-        k = ov_opset.constant(1, Type.i32).output(0)
+        topk_axis = axis
+    k = ov_opset.constant(1, Type.i32).output(0)
     topk_outputs = ov_opset.topk(
         x,
         k=k,
-        axis=axis,
+        axis=topk_axis,
         mode="min",
         sort="value",
         stable=True,
@@ -604,7 +607,10 @@ def argmin(x, axis=None, keepdims=False):
     )
     topk_indices = topk_outputs.output(1)
     if not keepdims:
-        topk_indices = ov_opset.squeeze(topk_indices, [axis]).output(0)
+        if axis is None:
+            topk_indices = ov_opset.squeeze(topk_indices).output(0)
+        else:
+            topk_indices = ov_opset.squeeze(topk_indices, [topk_axis]).output(0)
     return OpenVINOKerasTensor(topk_indices)
 
 
@@ -4164,7 +4170,17 @@ def repeat(x, repeats, axis=None):
     ):
         repeats = int(repeats.item())
 
-    if isinstance(repeats, int):
+    repeats_tensor = get_ov_output(repeats)
+    repeats_shape = repeats_tensor.get_partial_shape()
+    is_scalar_or_len1 = repeats_shape.rank.is_static and (
+        repeats_shape.rank.get_length() == 0
+        or (
+            repeats_shape.rank.get_length() == 1
+            and repeats_shape[0].is_static
+            and repeats_shape[0].get_length() == 1
+        )
+    )
+    if isinstance(repeats, int) or is_scalar_or_len1:
         dim_len = ov_opset.gather(
             ov_opset.shape_of(x, Type.i32),
             ov_opset.constant([axis], Type.i32),
@@ -4175,13 +4191,13 @@ def repeat(x, repeats, axis=None):
             const_0, dim_len, const_1, output_type=Type.i32
         )
         idx_range = ov_opset.unsqueeze(idx_range, const_1)
-        tiled = ov_opset.tile(
-            idx_range, ov_opset.constant([1, repeats], Type.i32)
+        tile_repeats = (
+            [1, repeats] if isinstance(repeats, int) else [1, repeats_tensor]
         )
+        tiled = ov_opset.tile(idx_range, shape_to_ov_output(tile_repeats))
         idx = ov_opset.reshape(tiled, const_neg_1, special_zero=False)
         result = ov_opset.gather(x, idx, ov_opset.constant(axis, Type.i32))
         return OpenVINOKerasTensor(result.output(0))
-    repeats_tensor = get_ov_output(repeats)
     cumsum = ov_opset.cumsum(repeats_tensor, const_0)
     total = ov_opset.reduce_sum(
         repeats_tensor, ov_opset.constant([0], Type.i32), keep_dims=False
