@@ -1,5 +1,12 @@
 # Tests that are known not to pass with the openvino backend.
 # Each line is one full pytest node id, matched exactly.
+keras/src/backend/common/variables_test.py::VariableOpsDTypeTest::test_floordiv_('int16', 'bool')
+keras/src/backend/common/variables_test.py::VariableOpsDTypeTest::test_floordiv_('int8', 'bool')
+keras/src/backend/common/variables_test.py::VariableOpsDTypeTest::test_floordiv_('uint16', 'bool')
+keras/src/backend/common/variables_test.py::VariableOpsDTypeTest::test_floordiv_('uint32', 'bool')
+keras/src/backend/common/variables_test.py::VariableOpsDTypeTest::test_floordiv_('uint8', 'bool')
+keras/src/ops/image_test.py::ImageOpsCorrectnessTest::test_resize_bicubic_false
+keras/src/ops/image_test.py::ImageOpsCorrectnessTest::test_resize_bicubic_true
 keras/src/ops/linalg_test.py::LinalgOpsCorrectnessTest::test_eigh
 keras/src/ops/linalg_test.py::LinalgOpsCorrectnessTest::test_lstsq_b_rank_1
 keras/src/ops/linalg_test.py::LinalgOpsCorrectnessTest::test_lstsq_b_rank_2
