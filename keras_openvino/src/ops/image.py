@@ -17,6 +17,7 @@ from keras_openvino.src.ops.core import get_ov_output
 from keras_openvino.src.random import _random_normal
 from keras_openvino.src.utils import DTYPES_MAX
 from keras_openvino.src.utils import DTYPES_MIN
+from keras_openvino.src.utils import ov_abs
 
 AFFINE_TRANSFORM_INTERPOLATIONS = {"nearest": 0, "bilinear": 1}
 AFFINE_TRANSFORM_FILL_MODES = {
@@ -112,7 +113,7 @@ def rgb_to_hsv(images, data_format=None):
         )
     eps = ov_opset.constant(epsilon(), dtype=ov_type).output(0)
     images = ov_opset.select(
-        ov_opset.less(ov_opset.abs(images), eps),
+        ov_opset.less(ov_abs(images), eps),
         ov_opset.constant(0.0, dtype=ov_type),
         images,
     ).output(0)
@@ -230,15 +231,15 @@ def hsv_to_rgb(images, data_format=None):
         three_const = ov_opset.constant(3.0, dtype=ov_type).output(0)
         four_const = ov_opset.constant(4.0, dtype=ov_type).output(0)
         dr = ov_opset.subtract(
-            ov_opset.abs(ov_opset.subtract(dh, three_const)), one_const
+            ov_abs(ov_opset.subtract(dh, three_const)), one_const
         ).output(0)
         dr = ov_opset.clamp(dr, 0.0, 1.0).output(0)
         dg = ov_opset.subtract(
-            two_const, ov_opset.abs(ov_opset.subtract(dh, two_const))
+            two_const, ov_abs(ov_opset.subtract(dh, two_const))
         ).output(0)
         dg = ov_opset.clamp(dg, 0.0, 1.0).output(0)
         db = ov_opset.subtract(
-            two_const, ov_opset.abs(ov_opset.subtract(dh, four_const))
+            two_const, ov_abs(ov_opset.subtract(dh, four_const))
         ).output(0)
         db = ov_opset.clamp(db, 0.0, 1.0).output(0)
         one_minus_saturation = ov_opset.subtract(one_const, saturation).output(
@@ -1944,7 +1945,7 @@ def _ov_compute_weight_mat(
     sample_f_2d = ov_opset.unsqueeze(sample_f, axes=[0]).output(0)  # [1, n]
     arange_m_2d = ov_opset.unsqueeze(arange_m, axes=[1]).output(0)  # [m, 1]
     x = ov_opset.divide(
-        ov_opset.abs(ov_opset.subtract(sample_f_2d, arange_m_2d)),
+        ov_abs(ov_opset.subtract(sample_f_2d, arange_m_2d)),
         kernel_scale,
     ).output(0)  # [m, n]
     weights = kernel(x)  # [m, n]
@@ -1960,7 +1961,7 @@ def _ov_compute_weight_mat(
     ).output(0)
     weights = ov_opset.select(
         ov_opset.greater(
-            ov_opset.abs(total_weight_sum),
+            ov_abs(total_weight_sum),
             ov_opset.constant(eps_val, dtype=ov_type),
         ),
         ov_opset.divide(weights, safe_denom),

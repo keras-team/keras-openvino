@@ -87,5 +87,14 @@ def align_operand_types(x1, x2, op_name, force_float=False):
     return x1, x2
 
 
+def ov_abs(x):
+    # Not ov_opset.abs: the CPU plugin can fold Abs of a computed constant to
+    # the signed value (openvinotoolkit/openvino#38388).
+    x_type = x.get_element_type()
+    if x_type == ov.Type.boolean or not x_type.is_signed():
+        return ov_opset.convert(x, x_type)
+    return ov_opset.maximum(x, ov_opset.negative(x))
+
+
 def get_device():
     return "CPU"
