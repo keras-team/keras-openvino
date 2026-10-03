@@ -14,6 +14,7 @@ from keras_openvino.src.ops.core import cast
 from keras_openvino.src.ops.core import convert_to_numpy
 from keras_openvino.src.ops.core import convert_to_tensor
 from keras_openvino.src.ops.core import get_ov_output
+from keras_openvino.src.utils import ov_abs
 
 
 def cholesky(a, upper=False):
@@ -500,7 +501,7 @@ def eigh(a):
     ).output(0)
     mask_b = ov_opset.broadcast(mask, l_flat_shape).output(0)
     A_off = ov_opset.multiply(A_curr, mask_b).output(0)
-    A_off_abs = ov_opset.abs(A_off).output(0)
+    A_off_abs = ov_abs(A_off).output(0)
     flat_n2 = ov_opset.concat(
         [
             ov_opset.unsqueeze(l_batch_size_prod, zero_const).output(0),
@@ -555,7 +556,7 @@ def eigh(a):
         ov_opset.subtract(Aqq, App),
         ov_opset.multiply(ov_opset.constant(2.0, out_ov_type), safe_Apq),
     ).output(0)
-    theta_abs = ov_opset.abs(theta).output(0)
+    theta_abs = ov_abs(theta).output(0)
     theta_sign = ov_opset.sign(theta).output(0)
     theta_sign = ov_opset.select(
         ov_opset.equal(theta, zero_out),
@@ -787,7 +788,7 @@ def lu_factor(a):
         ov_opset.constant([2], Type.i32).output(0),
     ).output(0)
 
-    A_k_col_abs = ov_opset.abs(A_k_col_elem).output(0)
+    A_k_col_abs = ov_abs(A_k_col_elem).output(0)
 
     topk = ov_opset.topk(
         A_k_col_abs, ov_opset.constant(1, Type.i32), 1, "max", "value"
@@ -1135,14 +1136,14 @@ def norm(x, ord=None, axis=None, keepdims=False):
         elif ord == float("inf"):
             axis_for_const = list(axis) if isinstance(axis, tuple) else axis
             axis_const = ov_opset.constant(axis_for_const, Type.i32).output(0)
-            x_abs = ov_opset.abs(x_ov).output(0)
+            x_abs = ov_abs(x_ov).output(0)
             norm_result = ov_opset.reduce_max(
                 x_abs, axis_const, keepdims
             ).output(0)
         elif ord == float("-inf"):
             axis_for_const = list(axis) if isinstance(axis, tuple) else axis
             axis_const = ov_opset.constant(axis_for_const, Type.i32).output(0)
-            x_abs = ov_opset.abs(x_ov).output(0)
+            x_abs = ov_abs(x_ov).output(0)
             norm_result = ov_opset.reduce_min(
                 x_abs, axis_const, keepdims
             ).output(0)
@@ -1172,7 +1173,7 @@ def norm(x, ord=None, axis=None, keepdims=False):
             ord_ov = get_ov_output(ord_tensor)
             axis_for_const = list(axis) if isinstance(axis, tuple) else axis
             axis_const = ov_opset.constant(axis_for_const, Type.i32).output(0)
-            x_abs = ov_opset.abs(x_ov).output(0)
+            x_abs = ov_abs(x_ov).output(0)
             x_pow = ov_opset.power(x_abs, ord_ov).output(0)
             sum_pow = ov_opset.reduce_sum(x_pow, axis_const, keepdims).output(0)
             one = convert_to_tensor(1.0, dtype=dtype)
@@ -1199,7 +1200,7 @@ def norm(x, ord=None, axis=None, keepdims=False):
             row_axis_const = ov_opset.constant(row_axis, Type.i32).output(0)
             col_axis_const = ov_opset.constant(col_axis, Type.i32).output(0)
 
-            x_abs = ov_opset.abs(x_ov).output(0)
+            x_abs = ov_abs(x_ov).output(0)
             col_sum = ov_opset.reduce_sum(
                 x_abs, row_axis_const, keep_dims=keepdims
             ).output(0)
@@ -1213,7 +1214,7 @@ def norm(x, ord=None, axis=None, keepdims=False):
             row_axis_const = ov_opset.constant(row_axis, Type.i32).output(0)
             col_axis_const = ov_opset.constant(col_axis, Type.i32).output(0)
 
-            x_abs = ov_opset.abs(x_ov).output(0)
+            x_abs = ov_abs(x_ov).output(0)
             col_sum = ov_opset.reduce_sum(
                 x_abs, row_axis_const, keep_dims=keepdims
             ).output(0)
@@ -1227,7 +1228,7 @@ def norm(x, ord=None, axis=None, keepdims=False):
             col_axis_const = ov_opset.constant(col_axis, Type.i32).output(0)
             row_axis_const = ov_opset.constant(row_axis, Type.i32).output(0)
 
-            x_abs = ov_opset.abs(x_ov).output(0)
+            x_abs = ov_abs(x_ov).output(0)
             row_sum = ov_opset.reduce_sum(
                 x_abs, col_axis_const, keep_dims=keepdims
             ).output(0)
@@ -1241,7 +1242,7 @@ def norm(x, ord=None, axis=None, keepdims=False):
             col_axis_const = ov_opset.constant(col_axis, Type.i32).output(0)
             row_axis_const = ov_opset.constant(row_axis, Type.i32).output(0)
 
-            x_abs = ov_opset.abs(x_ov).output(0)
+            x_abs = ov_abs(x_ov).output(0)
             row_sum = ov_opset.reduce_sum(
                 x_abs, col_axis_const, keep_dims=keepdims
             ).output(0)
@@ -1788,18 +1789,13 @@ def _svd_jacobi(A_ov, batch, n, work_type):
     ones_col = const_f(np.ones((batch, 1), dtype=np.float32))
     zeros_col = const_f(np.zeros((batch, 1), dtype=np.float32))
 
-    def _abs(v):
-        # Not ov_opset.abs: OpenVINO folds Abs(Subtract(const, const)) away
-        # on 1-D shapes, silently returning the signed value.
-        return ov_opset.maximum(v, ov_opset.negative(v))
-
     Wp = ov_opset.gather(W_param, p, axis2)
     Wq = ov_opset.gather(W_param, q, axis2)
     a = ov_opset.reduce_sum(ov_opset.multiply(Wp, Wp), axis1, False)
     b = ov_opset.reduce_sum(ov_opset.multiply(Wq, Wq), axis1, False)
     c = ov_opset.reduce_sum(ov_opset.multiply(Wp, Wq), axis1, False)
 
-    abs_c = _abs(c)
+    abs_c = ov_abs(c)
     c_safe = ov_opset.select(ov_opset.greater(abs_c, tiny), c, one)
     # zeta = (b - a) / (2c); t = sign(zeta) / (|zeta| + sqrt(1 + zeta^2))
     zeta = ov_opset.divide(
@@ -1811,7 +1807,7 @@ def _svd_jacobi(A_ov, batch, n, work_type):
     t = ov_opset.divide(
         sign_z,
         ov_opset.add(
-            _abs(zeta),
+            ov_abs(zeta),
             ov_opset.sqrt(ov_opset.add(one, ov_opset.multiply(zeta, zeta))),
         ),
     )

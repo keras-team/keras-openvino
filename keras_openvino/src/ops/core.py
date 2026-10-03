@@ -22,6 +22,7 @@ from keras.src.backend.common.stateless_scope import StatelessScope
 from keras_openvino.src.utils import OPENVINO_DTYPES
 from keras_openvino.src.utils import align_operand_types
 from keras_openvino.src.utils import get_device
+from keras_openvino.src.utils import ov_abs
 from keras_openvino.src.utils import ov_to_keras_type
 
 
@@ -177,7 +178,7 @@ class OpenVINOKerasTensor:
 
     def __abs__(self):
         first = self.output
-        return OpenVINOKerasTensor(ov_opset.absolute(first).output(0))
+        return OpenVINOKerasTensor(ov_abs(first).output(0))
 
     def __invert__(self):
         first = self.output

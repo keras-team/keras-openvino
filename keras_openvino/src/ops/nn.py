@@ -17,6 +17,7 @@ from keras_openvino.src.ops.core import OpenVINOKerasTensor
 from keras_openvino.src.ops.core import get_ov_output
 from keras_openvino.src.ops.core import ov_to_keras_type
 from keras_openvino.src.ops.core import shape_to_ov_output
+from keras_openvino.src.utils import ov_abs
 
 
 def relu(x):
@@ -71,7 +72,7 @@ def soft_shrink(x, threshold=0.5):
     et = x.get_element_type()
     thr = get_ov_output(threshold, et)
     zero = get_ov_output(0.0, et)
-    abs_x = ov_opset.abs(x)
+    abs_x = ov_abs(x)
     sub = ov_opset.subtract(abs_x, thr)
     shrunk = ov_opset.maximum(sub, zero)
     sign = ov_opset.sign(x)
@@ -84,7 +85,7 @@ def hard_shrink(x, threshold=0.5):
     et = x.get_element_type()
     thr = get_ov_output(threshold, et)
     zero = get_ov_output(0.0, et)
-    cond = ov_opset.greater(ov_opset.abs(x), thr)
+    cond = ov_opset.greater(ov_abs(x), thr)
     out = ov_opset.select(cond, x, zero)
     return OpenVINOKerasTensor(out.output(0))
 

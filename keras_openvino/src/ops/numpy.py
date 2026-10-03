@@ -20,6 +20,7 @@ from keras_openvino.src.utils import DTYPES_MAX
 from keras_openvino.src.utils import DTYPES_MIN
 from keras_openvino.src.utils import OPENVINO_DTYPES
 from keras_openvino.src.utils import align_operand_types as _align_operand_types
+from keras_openvino.src.utils import ov_abs
 from keras_openvino.src.utils import ov_to_keras_type
 
 
@@ -213,12 +214,12 @@ def absolute(x):
     x_type = x.get_element_type()
     if x_type == Type.boolean:
         return OpenVINOKerasTensor(x)
-    return OpenVINOKerasTensor(ov_opset.absolute(x).output(0))
+    return OpenVINOKerasTensor(ov_abs(x).output(0))
 
 
 def abs(x):
     x = get_ov_output(x)
-    return OpenVINOKerasTensor(ov_opset.absolute(x).output(0))
+    return OpenVINOKerasTensor(ov_abs(x).output(0))
 
 
 def fabs(x):
@@ -229,7 +230,7 @@ def fabs(x):
         ov_type = OPENVINO_DTYPES[config.floatx()]
         x = ov_opset.convert(x, ov_type).output(0)
 
-    return OpenVINOKerasTensor(ov_opset.absolute(x).output(0))
+    return OpenVINOKerasTensor(ov_abs(x).output(0))
 
 
 def all(x, axis=None, keepdims=False):
@@ -1305,7 +1306,7 @@ def cbrt(x):
     if x_type.is_integral() or x_type == Type.boolean:
         x = ov_opset.convert(x, OPENVINO_DTYPES[config.floatx()]).output(0)
     sign_x = ov_opset.sign(x)
-    abs_x = ov_opset.absolute(x)
+    abs_x = ov_abs(x)
     one_third = ov_opset.constant(1.0 / 3.0, x.get_element_type())
     root_abs = ov_opset.power(abs_x, one_third)
     res = ov_opset.multiply(sign_x, root_abs)
@@ -1560,7 +1561,7 @@ def cumprod(x, axis=None, dtype=None):
     ).output(0)
     cum_sign = ov_opset.convert(cum_sign, compute_dtype).output(0)
 
-    abs_x = ov_opset.absolute(x).output(0)
+    abs_x = ov_abs(x).output(0)
     is_zero_abs = ov_opset.equal(
         abs_x, ov_opset.constant(0, compute_dtype)
     ).output(0)
@@ -2159,8 +2160,8 @@ def gcd(x1, x2):
     x2 = get_ov_output(x2)
     x1, x2 = _align_operand_types(x1, x2, "gcd()")
 
-    x1 = ov_opset.abs(x1).output(0)
-    x2 = ov_opset.abs(x2).output(0)
+    x1 = ov_abs(x1).output(0)
+    x2 = ov_abs(x2).output(0)
 
     # Broadcast to common shape
     temp_sum = ov_opset.add(x1, x2).output(0)
@@ -2224,8 +2225,8 @@ def geomspace(start, stop, num=50, endpoint=True, dtype=None, axis=0):
     start = ov_opset.convert(start, output_type).output(0)
     stop = ov_opset.convert(stop, output_type).output(0)
 
-    abs_start = ov_opset.abs(start).output(0)
-    abs_stop = ov_opset.abs(stop).output(0)
+    abs_start = ov_abs(start).output(0)
+    abs_stop = ov_abs(stop).output(0)
 
     log_start = ov_opset.log(abs_start).output(0)
     log_stop = ov_opset.log(abs_stop).output(0)
@@ -2316,8 +2317,8 @@ def hypot(x1, x2):
         ov_type = OPENVINO_DTYPES[config.floatx()]
         x1 = ov_opset.convert(x1, ov_type)
         x2 = ov_opset.convert(x2, ov_type)
-    x1_abs = ov_opset.absolute(x1)
-    x2_abs = ov_opset.absolute(x2)
+    x1_abs = ov_abs(x1)
+    x2_abs = ov_abs(x2)
     max_val = ov_opset.maximum(x1_abs, x2_abs)
     min_val = ov_opset.minimum(x1_abs, x2_abs)
     one = ov_opset.constant(1, max_val.get_element_type())
@@ -2374,7 +2375,7 @@ def i0(x):
         else:
             ov_type = OPENVINO_DTYPES[config.floatx()]
         x = ov_opset.convert(x, ov_type).output(0)
-    x = ov_opset.abs(x).output(0)
+    x = ov_abs(x).output(0)
     x_type = x.get_element_type()
     three_point_seven_five = ov_opset.constant(3.75, x_type).output(0)
     p1_coeffs = [
@@ -2448,8 +2449,8 @@ def isclose(x1, x2, rtol=1e-5, atol=1e-8, equal_nan=False):
     rtol = ov_opset.convert(get_ov_output(rtol), dtype).output(0)
     atol = ov_opset.convert(get_ov_output(atol), dtype).output(0)
 
-    abs_diff = ov_opset.abs(ov_opset.subtract(x1, x2)).output(0)
-    abs_x2 = ov_opset.abs(x2).output(0)
+    abs_diff = ov_abs(ov_opset.subtract(x1, x2)).output(0)
+    abs_x2 = ov_abs(x2).output(0)
     total_tolerance = ov_opset.add(
         atol, ov_opset.multiply(rtol, abs_x2)
     ).output(0)
@@ -2462,7 +2463,7 @@ def isclose(x1, x2, rtol=1e-5, atol=1e-8, equal_nan=False):
     is_close = ov_opset.logical_or(is_close, equal).output(0)
     if equal_nan:
         both_nan = ov_opset.logical_and(
-            ov_opset.isnan(x1).output(0), ov_opset.isnan(x2).output(0)
+            ov_opset.is_nan(x1).output(0), ov_opset.is_nan(x2).output(0)
         ).output(0)
         is_close = ov_opset.logical_or(is_close, both_nan).output(0)
 
@@ -2636,8 +2637,8 @@ def lcm(x1, x2):
     x1, x2 = _align_operand_types(x1, x2, "lcm()")
     if not x1.get_element_type().is_integral():
         raise ValueError("`lcm` is only supported for integer types.")
-    x1_abs = ov_opset.abs(x1).output(0)
-    x2_abs = ov_opset.abs(x2).output(0)
+    x1_abs = ov_abs(x1).output(0)
+    x2_abs = ov_abs(x2).output(0)
 
     gcd_val = gcd(x1, x2)
     gcd_val = get_ov_output(gcd_val)
@@ -2902,7 +2903,7 @@ def logaddexp(x1, x2):
 
     # Compute absolute difference
     sub_node = ov_opset.subtract(x1, x2)
-    abs_diff_node = ov_opset.abs(sub_node.output(0))
+    abs_diff_node = ov_abs(sub_node.output(0))
     abs_diff = abs_diff_node.output(0)
 
     # Compute negative absolute difference and its exponential
@@ -2949,7 +2950,7 @@ def logaddexp2(x1, x2):
     max_val = ov_opset.maximum(x1, x2)
 
     sub = ov_opset.subtract(x1, x2)
-    abs_diff = ov_opset.abs(sub)
+    abs_diff = ov_abs(sub)
 
     neg_abs_diff = ov_opset.negative(abs_diff)
 
@@ -4734,7 +4735,7 @@ def trunc(x):
     if x_type.is_integral():
         return OpenVINOKerasTensor(x)
     sign_x = ov_opset.sign(x)
-    abs_x = ov_opset.abs(x)
+    abs_x = ov_abs(x)
     floor_abs_x = ov_opset.floor(abs_x)
     result = ov_opset.multiply(sign_x, floor_abs_x)
     return OpenVINOKerasTensor(result.output(0))
@@ -5045,7 +5046,7 @@ def nextafter(x1, x2):
 
     eq_mask = ov_opset.equal(x1, x2).output(0)
     direction = ov_opset.sign(ov_opset.subtract(x2, x1)).output(0)
-    abs_x1 = ov_opset.abs(x1).output(0)
+    abs_x1 = ov_abs(x1).output(0)
 
     # Compute ULP = 2^(floor(log2(|x1|)) - 52) for normal float64 numbers
     ln2 = ov_opset.constant(np.log(2.0), Type.f64).output(0)
@@ -5531,7 +5532,7 @@ def slogdet(x):
         col_k = ov_opset.gather(
             x_batched, ov_opset.constant(k, Type.i32).output(0), col_axis
         ).output(0)
-        abs_col_k = ov_opset.absolute(col_k).output(0)
+        abs_col_k = ov_abs(col_k).output(0)
 
         # Slice rows [k:n] of the column
         abs_col_k_sub = ov_opset.slice(
@@ -5618,7 +5619,7 @@ def slogdet(x):
             pivot_elem, ov_opset.constant([1, 2], Type.i32).output(0)
         ).output(0)
 
-        abs_pivot = ov_opset.absolute(pivot_scalar).output(0)
+        abs_pivot = ov_abs(pivot_scalar).output(0)
         safe_abs = ov_opset.maximum(
             abs_pivot, ov_opset.constant(1e-38, x_ov_type).output(0)
         ).output(0)
