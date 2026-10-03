@@ -2463,7 +2463,7 @@ def isclose(x1, x2, rtol=1e-5, atol=1e-8, equal_nan=False):
     is_close = ov_opset.logical_or(is_close, equal).output(0)
     if equal_nan:
         both_nan = ov_opset.logical_and(
-            ov_opset.isnan(x1).output(0), ov_opset.isnan(x2).output(0)
+            ov_opset.is_nan(x1).output(0), ov_opset.is_nan(x2).output(0)
         ).output(0)
         is_close = ov_opset.logical_or(is_close, both_nan).output(0)
 
