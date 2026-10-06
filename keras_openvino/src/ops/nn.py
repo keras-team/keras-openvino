@@ -115,7 +115,11 @@ def log_sigmoid(x):
 
 
 def leaky_relu(x, negative_slope=0.2):
+    # `slope_const` truncates to 0 under an integer element type.
     x = get_ov_output(x)
+    keras_dtype = ov_to_keras_type(x.get_element_type())
+    if "int" in keras_dtype or keras_dtype == "bool":
+        x = ov_opset.convert(x, OPENVINO_DTYPES[floatx()]).output(0)
     slope_const = ov_opset.constant(
         negative_slope, x.get_element_type()
     ).output(0)
@@ -814,12 +818,8 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
     if from_logits:
         log_prob = ov_opset.log_softmax(output, axis).output(0)
     else:
-        epsilon_ = ov_opset.constant(
-            epsilon(), output.get_element_type()
-        ).output(0)
         sum_result = ov_opset.reduce_sum(output, axis, keep_dims=True).output(0)
-        denom = ov_opset.maximum(sum_result, epsilon_).output(0)
-        output = ov_opset.divide(output, denom).output(0)
+        output = ov_opset.divide(output, sum_result).output(0)
         output = ov_opset.clamp(
             output, min_value=epsilon(), max_value=1 - epsilon()
         ).output(0)
@@ -860,12 +860,8 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
     if from_logits:
         log_prob = ov_opset.log_softmax(output, axis).output(0)
     else:
-        epsilon_ = ov_opset.constant(
-            epsilon(), output.get_element_type()
-        ).output(0)
         sum = ov_opset.reduce_sum(output, axis, keep_dims=True).output(0)
-        denom = ov_opset.maximum(sum, epsilon_).output(0)
-        output = ov_opset.divide(output, denom).output(0)
+        output = ov_opset.divide(output, sum).output(0)
         output = ov_opset.clamp(
             output, min_value=epsilon(), max_value=1 - epsilon()
         ).output(0)
