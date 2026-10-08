@@ -6,13 +6,12 @@ For development, you need the `keras` repository and the `keras-openvino`
 repository checked out locally. That's because the unit tests code is in the
 keras repository.
 
-We first check out the main `keras` repository and the `pluggable_backend`
-branch. Then, we install the required dependencies.
+We first check out the main `keras` repository. Then, we install the required
+dependencies.
 
 ```
 gh repo clone keras-team/keras
 cd keras
-git checkout pluggable_backend
 pip install -r requirements.txt
 cd ..
 ```
