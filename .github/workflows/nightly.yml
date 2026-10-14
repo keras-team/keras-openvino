@@ -1,0 +1,79 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    if: github.repository == 'keras-team/keras-openvino'
+    uses: ./.github/workflows/actions.yml # zizmor: ignore[self-repository]
+
+  report:
+    name: Report failure
+    needs: [tests]
+    if: >-
+      !cancelled() &&
+      github.repository == 'keras-team/keras-openvino' &&
+      needs.tests.result != 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+
+    steps:
+      - name: Open or update the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RESULT: ${{ needs.tests.result }}
+          KERAS_SHA: ${{ needs.tests.outputs.keras-sha }}
+          FAILED_TESTS: ${{ needs.tests.outputs.failed-tests }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ "$RESULT" = "cancelled" ]; then
+            status="timed out or was cancelled"
+          else
+            status="failed"
+          fi
+          if [ -n "$KERAS_SHA" ]; then
+            keras="https://github.com/keras-team/keras/commit/$KERAS_SHA"
+          else
+            keras="unknown"
+          fi
+          {
+            echo "Run: $RUN_URL"
+            echo "Keras commit: $keras"
+            echo
+            if [ -n "$FAILED_TESTS" ]; then
+              echo "Failing tests:"
+              echo '```'
+              echo "$FAILED_TESTS"
+              echo '```'
+            else
+              echo "No test summary: the run failed before the tests ran, or timed out. See the run log."
+            fi
+          } > details.md
+
+          gh label create ci-nightly --color B60205 \
+            --description "Nightly CI against Keras master is failing" --force
+          issue=$(gh issue list --label ci-nightly --state open \
+            --json number --jq '.[0].number')
+          if [ -n "$issue" ]; then
+            { echo "The nightly run $status again."; echo; cat details.md; } > comment.md
+            gh issue comment "$issue" --body-file comment.md
+          else
+            {
+              echo "The nightly run against Keras master $status."
+              echo
+              cat details.md
+              echo
+              echo "Reference this issue with \`Fixes #<number>\` in the PR that fixes it."
+            } > issue.md
+            gh issue create --label ci-nightly \
+              --title "Nightly CI against Keras master is failing" \
+              --body-file issue.md
+          fi

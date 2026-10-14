@@ -6,9 +6,12 @@ on:
   pull_request:
   release:
     types: [created]
-  schedule:
-    - cron: "0 6 * * *"
-  workflow_dispatch:
+  workflow_call:
+    outputs:
+      keras-sha:
+        value: ${{ jobs.run_cpu_tests.outputs.keras-sha }}
+      failed-tests:
+        value: ${{ jobs.run_cpu_tests.outputs.failed-tests }}
 
 permissions:
   contents: read
@@ -25,6 +28,9 @@ jobs:
     name: Run tests
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    outputs:
+      keras-sha: ${{ steps.keras.outputs.sha }}
+      failed-tests: ${{ steps.summary.outputs.failed }}
 
     env:
       KERAS_HOME: ../keras-openvino/.github/workflows/config
@@ -43,6 +49,10 @@ jobs:
           ref: master
           path: keras
           persist-credentials: false
+
+      - name: Record keras commit
+        id: keras
+        run: echo "sha=$(git -C keras rev-parse HEAD)" >> "$GITHUB_OUTPUT"
  
       - name: Install Python dependencies
         run: |
@@ -59,36 +69,24 @@ jobs:
 
       - name: Run Tests
         working-directory: ./keras
-        run: pytest keras -n auto --dist loadfile --ignore keras/src/applications --ignore keras/src/wrappers
+        run: |
+          set -o pipefail
+          pytest keras -n auto --dist loadfile --ignore keras/src/applications --ignore keras/src/wrappers | tee "$RUNNER_TEMP/pytest.log"
+
+      - name: Collect failed tests
+        id: summary
+        if: always()
+        run: |
+          failed=$(grep -E '^(FAILED|ERROR) ' "$RUNNER_TEMP/pytest.log" 2>/dev/null | sed -E 's/ - .*$//' || true)
+          count=$(printf '%s' "$failed" | grep -c . || true)
+          {
+            echo "failed<<EOF_FAILED"
+            printf '%s\n' "$failed" | head -n 30
+            if [ "$count" -gt 30 ]; then echo "... and $((count - 30)) more"; fi
+            echo "EOF_FAILED"
+          } >> "$GITHUB_OUTPUT"
 
       # TODO integration tests
-
-  report:
-    name: Report daily failure
-    needs: [run_cpu_tests]
-    if: failure() && github.event_name == 'schedule'
-    runs-on: ubuntu-latest
-    permissions:
-      issues: write
-
-    steps:
-      - name: Open or update the tracking issue
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          gh label create ci-nightly --color B60205 \
-            --description "Daily CI against Keras master is failing" --force
-          issue=$(gh issue list --label ci-nightly --state open \
-            --json number --jq '.[0].number')
-          if [ -n "$issue" ]; then
-            gh issue comment "$issue" --body "Still failing: $RUN_URL"
-          else
-            gh issue create --label ci-nightly \
-              --title "Daily CI against Keras master is failing" \
-              --body "The daily run against Keras master failed: $RUN_URL"
-          fi
 
   format:
     name: Check the code format
