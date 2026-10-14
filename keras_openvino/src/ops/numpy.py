@@ -3234,9 +3234,8 @@ def moveaxis(x, source, destination):
     source = [axis if axis >= 0 else axis + ndim for axis in source]
     destination = [axis if axis >= 0 else axis + ndim for axis in destination]
 
-    axes = list(range(ndim))
-    for src, dst in zip(source, destination):
-        axes.remove(src)
+    axes = [axis for axis in range(ndim) if axis not in source]
+    for dst, src in sorted(zip(destination, source)):
         axes.insert(dst, src)
 
     axes_const = ov_opset.constant(axes, Type.i32).output(0)

@@ -18,6 +18,7 @@ from keras_openvino.src.ops.core import get_ov_output
 from keras_openvino.src.ops.core import ov_to_keras_type
 from keras_openvino.src.ops.core import shape_to_ov_output
 from keras_openvino.src.utils import ov_abs
+from keras_openvino.src.utils import promote_to_float
 
 
 def relu(x):
@@ -68,7 +69,7 @@ def hard_tanh(x):
 
 
 def soft_shrink(x, threshold=0.5):
-    x = get_ov_output(x)
+    x = promote_to_float(get_ov_output(x))
     et = x.get_element_type()
     thr = get_ov_output(threshold, et)
     zero = get_ov_output(0.0, et)
@@ -128,7 +129,7 @@ def leaky_relu(x, negative_slope=0.2):
 
 
 def sparse_sigmoid(x):
-    x = get_ov_output(x)
+    x = promote_to_float(get_ov_output(x))
     et = x.get_element_type()
     one = get_ov_output(1.0, et)
     neg_one = get_ov_output(-1.0, et)
@@ -165,7 +166,7 @@ def elu(x, alpha=1.0):
 def selu(x):
     alpha = 1.6732632423543772848170429916717
     scale = 1.0507009873554804934193349852946
-    x = get_ov_output(x)
+    x = promote_to_float(get_ov_output(x))
     alpha = get_ov_output(alpha, x.get_element_type())
     scale = get_ov_output(scale, x.get_element_type())
     return OpenVINOKerasTensor(ov_opset.selu(x, alpha, scale).output(0))
@@ -311,7 +312,7 @@ def squareplus(x, b=4):
 
 
 def sparse_plus(x):
-    x = get_ov_output(x)
+    x = promote_to_float(get_ov_output(x))
     et = x.get_element_type()
     one = get_ov_output(1.0, et)
     neg_one = get_ov_output(-1.0, et)

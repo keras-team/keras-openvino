@@ -96,5 +96,13 @@ def ov_abs(x):
     return ov_opset.maximum(x, ov_opset.negative(x))
 
 
+def promote_to_float(x):
+    keras_dtype = ov_to_keras_type(x.get_element_type())
+    float_dtype = dtypes.promote_to_float_dtype(keras_dtype)
+    if float_dtype != keras_dtype:
+        x = ov_opset.convert(x, OPENVINO_DTYPES[float_dtype]).output(0)
+    return x
+
+
 def get_device():
     return "CPU"
