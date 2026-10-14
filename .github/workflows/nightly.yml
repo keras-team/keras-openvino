@@ -63,6 +63,13 @@ jobs:
           issue=$(gh issue list --label ci-nightly --state open \
             --json number --jq '.[0].number')
           if [ -n "$issue" ]; then
+            last=$(gh issue view "$issue" --json body,comments --jq \
+              '[.body] + [.comments[] | select(.author.login == "github-actions") | .body] | last')
+            previous=$(printf '%s\n' "$last" | sed -n '/^```$/,/^```$/p' | sed '1d;$d')
+            if [ -n "$FAILED_TESTS" ] && [ "$previous" = "$(printf '%s\n' "$FAILED_TESTS")" ]; then
+              echo "Same failing tests as the last report, not commenting."
+              exit 0
+            fi
             { echo "The nightly run $status again."; echo; cat details.md; } > comment.md
             gh issue comment "$issue" --body-file comment.md
           else
