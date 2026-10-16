@@ -162,13 +162,13 @@ def _compute_extrema(x, operation, axis=None, keepdims=False, initial=None):
     x_type = x.get_element_type()
     x_for_rank = x
 
+    if axis == () or axis == []:
+        return OpenVINOKerasTensor(x)
+
     is_bool = x_type == Type.boolean
     if is_bool:
         x = ov_opset.convert(x, Type.i32).output(0)
         x_type = Type.i32
-
-    if isinstance(axis, tuple) and len(axis) == 0:
-        return OpenVINOKerasTensor(x)
 
     was_axis_none = axis is None
     x, axis = _resolve_axis(x, axis)
@@ -297,40 +297,6 @@ def any(x, axis=None, keepdims=False):
         return OpenVINOKerasTensor(x)
     x = ov_opset.convert(x, Type.boolean).output(0)
     result = ov_opset.reduce_logical_or(x, axis, keepdims).output(0)
-    if was_axis_none and keepdims:
-        result = _restore_reduced_rank(result, x_orig)
-    return OpenVINOKerasTensor(result)
-
-
-def amax(x, axis=None, keepdims=False):
-    x = get_ov_output(x)
-    x_type = x.get_element_type()
-    was_axis_none = axis is None
-    x_orig = x
-    x, axis = _resolve_axis(x, axis)
-    if axis is None:
-        return OpenVINOKerasTensor(x)
-    if x_type == Type.boolean:
-        result = ov_opset.reduce_logical_or(x, axis, keepdims).output(0)
-    else:
-        result = ov_opset.reduce_max(x, axis, keepdims).output(0)
-    if was_axis_none and keepdims:
-        result = _restore_reduced_rank(result, x_orig)
-    return OpenVINOKerasTensor(result)
-
-
-def amin(x, axis=None, keepdims=False):
-    x = get_ov_output(x)
-    x_type = x.get_element_type()
-    was_axis_none = axis is None
-    x_orig = x
-    x, axis = _resolve_axis(x, axis)
-    if axis is None:
-        return OpenVINOKerasTensor(x)
-    if x_type == Type.boolean:
-        result = ov_opset.reduce_logical_and(x, axis, keepdims).output(0)
-    else:
-        result = ov_opset.reduce_min(x, axis, keepdims).output(0)
     if was_axis_none and keepdims:
         result = _restore_reduced_rank(result, x_orig)
     return OpenVINOKerasTensor(result)
@@ -3268,9 +3234,8 @@ def moveaxis(x, source, destination):
     source = [axis if axis >= 0 else axis + ndim for axis in source]
     destination = [axis if axis >= 0 else axis + ndim for axis in destination]
 
-    axes = list(range(ndim))
-    for src, dst in zip(source, destination):
-        axes.remove(src)
+    axes = [axis for axis in range(ndim) if axis not in source]
+    for dst, src in sorted(zip(destination, source)):
         axes.insert(dst, src)
 
     axes_const = ov_opset.constant(axes, Type.i32).output(0)
@@ -3397,7 +3362,7 @@ def nanmax(x, axis=None, keepdims=False):
         x_type = Type.f32
 
     if x_type.is_integral() or x_type == Type.boolean:
-        return amax(OpenVINOKerasTensor(x), axis=axis, keepdims=keepdims)
+        return max(OpenVINOKerasTensor(x), axis=axis, keepdims=keepdims)
 
     x, axis = _resolve_axis(x, axis)
     if axis is None:
@@ -3467,7 +3432,7 @@ def nanmin(x, axis=None, keepdims=False):
         x_type = Type.f32
 
     if x_type.is_integral() or x_type == Type.boolean:
-        return amin(OpenVINOKerasTensor(x), axis=axis, keepdims=keepdims)
+        return min(OpenVINOKerasTensor(x), axis=axis, keepdims=keepdims)
 
     x, axis = _resolve_axis(x, axis)
     if axis is None:
