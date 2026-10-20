@@ -15,6 +15,7 @@ from keras.src import tree
 from keras.src.backend.common import KerasTensor
 from keras.src.backend.common import KerasVariable
 from keras.src.backend.common import StatelessScope
+from keras.src.backend.common import SymbolicScope
 from keras.src.backend.common import result_type
 from keras.src.backend.common import standardize_dtype
 from keras.src.backend.common.backend_utils import slice_along_axis
@@ -940,7 +941,7 @@ def vectorized_map(function, elements):
 
 # Shape / dtype inference util
 def compute_output_spec(fn, *args, **kwargs):
-    with StatelessScope():
+    with StatelessScope(), SymbolicScope():
 
         def convert_keras_tensor_to_openvino(x):
             if isinstance(x, KerasTensor):
