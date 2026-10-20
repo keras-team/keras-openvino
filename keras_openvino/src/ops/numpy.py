@@ -2294,6 +2294,10 @@ def hypot(x1, x2):
         max_val,
         ov_opset.sqrt(ov_opset.add(one, ov_opset.multiply(ratio, ratio))),
     )
+    # Maximum/Minimum drop a NaN second operand, so propagate NaN explicitly.
+    is_nan_mask = ov_opset.logical_or(ov_opset.is_nan(x1), ov_opset.is_nan(x2))
+    zero = ov_opset.constant(0, max_val.get_element_type())
+    result = ov_opset.select(is_nan_mask, ov_opset.divide(zero, zero), result)
     is_inf_mask = ov_opset.logical_or(
         get_ov_output(isinf(x1_abs.output(0))),
         get_ov_output(isinf(x2_abs.output(0))),
