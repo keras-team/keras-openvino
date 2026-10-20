@@ -2987,7 +2987,11 @@ def logspace(start, stop, num=50, endpoint=True, base=10, dtype=None, axis=0):
 def maximum(x1, x2):
     x1, x2 = _promote_binary_op_types(x1, x2)
     x1, x2 = _align_operand_types(x1, x2, "maximum()")
-    return OpenVINOKerasTensor(ov_opset.maximum(x1, x2).output(0))
+    result = ov_opset.maximum(x1, x2).output(0)
+    if x1.get_element_type().is_real():
+        # The op returns x1 when only x2 is NaN.
+        result = ov_opset.select(ov_opset.is_nan(x2), x2, result).output(0)
+    return OpenVINOKerasTensor(result)
 
 
 def fmax(x1, x2):
@@ -3188,7 +3192,11 @@ def min(x, axis=None, keepdims=False, initial=None):
 def minimum(x1, x2):
     x1, x2 = _promote_binary_op_types(x1, x2)
     x1, x2 = _align_operand_types(x1, x2, "minimum()")
-    return OpenVINOKerasTensor(ov_opset.minimum(x1, x2).output(0))
+    result = ov_opset.minimum(x1, x2).output(0)
+    if x1.get_element_type().is_real():
+        # The op returns x1 when only x2 is NaN.
+        result = ov_opset.select(ov_opset.is_nan(x2), x2, result).output(0)
+    return OpenVINOKerasTensor(result)
 
 
 def fmin(x1, x2):
