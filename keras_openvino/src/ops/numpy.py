@@ -2636,6 +2636,9 @@ def ldexp(x1, x2):
 
     const_two = ov_opset.constant(2, x2.get_element_type())
     result = ov_opset.multiply(x1, ov_opset.power(const_two, x2))
+    # Keep signed zeros when 2**x2 overflows.
+    zero = ov_opset.constant(0, x1.get_element_type())
+    result = ov_opset.select(ov_opset.equal(x1, zero), x1, result)
 
     return OpenVINOKerasTensor(result.output(0))
 
@@ -5373,9 +5376,52 @@ def floor_divide(x1, x2):
         x2 = ov_opset.convert(x2_output, ov_type).output(0)
     else:
         x1, x2 = _align_operand_types(x1_output, x2_output, "floor_divide()")
+    if x1.get_element_type().is_real():
+        return OpenVINOKerasTensor(_float_floor_divide(x1, x2))
     div = ov_opset.divide(x1, x2).output(0)
     floored_div = ov_opset.floor(div).output(0)
     return OpenVINOKerasTensor(floored_div)
+
+
+def _float_floor_divide(x1, x2):
+    # floor(x1 / x2) is off by one when the quotient rounds up to an integer.
+    out_type = x1.get_element_type()
+    compute_type = Type.f64 if out_type == Type.f64 else Type.f32
+    x1 = ov_opset.convert(x1, compute_type).output(0)
+    x2 = ov_opset.convert(x2, compute_type).output(0)
+
+    def const(value):
+        return ov_opset.constant(value, compute_type).output(0)
+
+    def split(a):
+        factor = const(134217729.0 if compute_type == Type.f64 else 4097.0)
+        c = ov_opset.multiply(a, factor)
+        hi = ov_opset.subtract(c, ov_opset.subtract(c, a))
+        lo = ov_opset.subtract(a, hi)
+        return hi, lo
+
+    q = ov_opset.floor(ov_opset.divide(x1, x2)).output(0)
+    # Exact q * x2 as p + err (Dekker).
+    p = ov_opset.multiply(q, x2)
+    q_hi, q_lo = split(q)
+    x2_hi, x2_lo = split(x2)
+    err = ov_opset.subtract(ov_opset.multiply(q_hi, x2_hi), p)
+    err = ov_opset.add(err, ov_opset.multiply(q_hi, x2_lo))
+    err = ov_opset.add(err, ov_opset.multiply(q_lo, x2_hi))
+    err = ov_opset.add(err, ov_opset.multiply(q_lo, x2_lo))
+    remainder = ov_opset.subtract(ov_opset.subtract(x1, p), err)
+
+    zero = const(0.0)
+    overshoot = ov_opset.logical_or(
+        ov_opset.logical_and(
+            ov_opset.greater(x2, zero), ov_opset.less(remainder, zero)
+        ),
+        ov_opset.logical_and(
+            ov_opset.less(x2, zero), ov_opset.greater(remainder, zero)
+        ),
+    )
+    q = ov_opset.select(overshoot, ov_opset.subtract(q, const(1.0)), q)
+    return ov_opset.convert(q, out_type).output(0)
 
 
 def logical_xor(x1, x2):
