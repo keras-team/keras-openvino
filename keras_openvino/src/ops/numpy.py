@@ -2294,6 +2294,10 @@ def hypot(x1, x2):
         max_val,
         ov_opset.sqrt(ov_opset.add(one, ov_opset.multiply(ratio, ratio))),
     )
+    # Maximum/Minimum drop a NaN second operand, so propagate NaN explicitly.
+    is_nan_mask = ov_opset.logical_or(ov_opset.is_nan(x1), ov_opset.is_nan(x2))
+    zero = ov_opset.constant(0, max_val.get_element_type())
+    result = ov_opset.select(is_nan_mask, ov_opset.divide(zero, zero), result)
     is_inf_mask = ov_opset.logical_or(
         get_ov_output(isinf(x1_abs.output(0))),
         get_ov_output(isinf(x2_abs.output(0))),
@@ -2986,7 +2990,11 @@ def logspace(start, stop, num=50, endpoint=True, base=10, dtype=None, axis=0):
 def maximum(x1, x2):
     x1, x2 = _promote_binary_op_types(x1, x2)
     x1, x2 = _align_operand_types(x1, x2, "maximum()")
-    return OpenVINOKerasTensor(ov_opset.maximum(x1, x2).output(0))
+    result = ov_opset.maximum(x1, x2).output(0)
+    if x1.get_element_type().is_real():
+        # The op returns x1 when only x2 is NaN.
+        result = ov_opset.select(ov_opset.is_nan(x2), x2, result).output(0)
+    return OpenVINOKerasTensor(result)
 
 
 def fmax(x1, x2):
@@ -3187,7 +3195,11 @@ def min(x, axis=None, keepdims=False, initial=None):
 def minimum(x1, x2):
     x1, x2 = _promote_binary_op_types(x1, x2)
     x1, x2 = _align_operand_types(x1, x2, "minimum()")
-    return OpenVINOKerasTensor(ov_opset.minimum(x1, x2).output(0))
+    result = ov_opset.minimum(x1, x2).output(0)
+    if x1.get_element_type().is_real():
+        # The op returns x1 when only x2 is NaN.
+        result = ov_opset.select(ov_opset.is_nan(x2), x2, result).output(0)
+    return OpenVINOKerasTensor(result)
 
 
 def fmin(x1, x2):
