@@ -1306,9 +1306,17 @@ def slice(inputs, start_indices, shape):
 
     # Apply reshape to ensure output matches expected shape
     # Convert None (dynamic) dimensions to -1 for OpenVINO compatibility
-    if all(dim is None or (isinstance(dim, int) and dim >= 0) for dim in shape):
-        reshape_pattern = [(-1 if dim is None else dim) for dim in shape]
-        target_shape = ov_opset.constant(reshape_pattern, Type.i32).output(0)
+    if all(
+        dim is None or isinstance(dim, OpenVINOKerasTensor) or dim >= 0
+        for dim in shape
+    ):
+        target_shape = [
+            prepare_slice_index(get_ov_output(dim))
+            if isinstance(dim, OpenVINOKerasTensor)
+            else ov_opset.constant([-1 if dim is None else dim], Type.i32)
+            for dim in shape
+        ]
+        target_shape = ov_opset.concat(target_shape, axis=0).output(0)
         result = ov_opset.reshape(result, target_shape, False).output(0)
 
     return OpenVINOKerasTensor(result)
