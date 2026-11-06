@@ -12,6 +12,7 @@ from keras_openvino.src.ops.core import cast
 from keras_openvino.src.ops.core import get_ov_output
 from keras_openvino.src.utils import OPENVINO_DTYPES
 from keras_openvino.src.utils import ov_to_keras_type
+from keras_openvino.src.utils import promote_to_float
 
 INT32_MAX = 2**31 - 1
 
@@ -927,7 +928,7 @@ def rsqrt(x):
 
 
 def erf(x):
-    x = get_ov_output(x)
+    x = promote_to_float(get_ov_output(x))
     erf = ov_opset.erf(x).output(0)
     return OpenVINOKerasTensor(erf)
 
