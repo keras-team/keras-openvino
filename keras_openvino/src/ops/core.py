@@ -18,6 +18,7 @@ from keras.src.backend.common import StatelessScope
 from keras.src.backend.common import SymbolicScope
 from keras.src.backend.common import result_type
 from keras.src.backend.common import standardize_dtype
+from keras.src.backend.common.backend_utils import empty_scan_ys_spec
 from keras.src.backend.common.backend_utils import slice_along_axis
 from keras_openvino.src.utils import OPENVINO_DTYPES
 from keras_openvino.src.utils import align_operand_types
@@ -1030,6 +1031,17 @@ def scan(f, init, xs=None, length=None, reverse=False, unroll=1):
         shape_node = ov_opset.shape_of(i_ov, Type.i32).output(0)
         dummy_y.append(
             OpenVINOKerasTensor(ov_opset.broadcast(zero, shape_node).output(0))
+        )
+
+    if n == 0:
+        from keras_openvino.src.ops.numpy import zeros
+
+        packed_xs = pack_input(xs_flat) if len(xs_flat) > 0 else None
+        ys_spec = empty_scan_ys_spec(compute_output_spec, f, init, packed_xs)
+        if ys_spec is None:
+            ys_spec = dummy_y
+        return init, tree.map_structure(
+            lambda y: zeros((0, *y.shape), y.dtype), ys_spec
         )
 
     carry = init
