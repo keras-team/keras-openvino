@@ -77,6 +77,9 @@ def cholesky(a, upper=False):
         N_node, ov_opset.constant(True, Type.boolean).output(0)
     )
 
+    # Built outside the loop body to keep its shapes static.
+    idx = ov_opset.range(zero_s, N_node, one_s, output_type=Type.i32).output(0)
+
     A_param = ov_opset.parameter(
         A_flat.get_partial_shape(), work_type, name="A"
     )
@@ -84,126 +87,41 @@ def cholesky(a, upper=False):
         L_init.get_partial_shape(), work_type, name="L"
     )
     k_param = ov_opset.parameter([], Type.i32, name="k")
-    B_param = ov_opset.parameter([], Type.i32, name="B")
-    N_param = ov_opset.parameter([], Type.i32, name="N")
+    idx_param = ov_opset.parameter(idx.get_partial_shape(), Type.i32, name="i")
 
     A_body = A_param.output(0)
     L_body = L_param.output(0)
     k = k_param.output(0)
-    N_body = N_param.output(0)
-    k_p1 = ov_opset.add(k, one_s).output(0)
+    idx_body = idx_param.output(0)
+    k_1d = ov_opset.unsqueeze(k, zero_s).output(0)
 
     # Cholesky-Banachiewicz: at step k, compute full column k of L in one pass.
-    # prev = L[:, :, :k]  already-computed columns, shape [B, N, k]
-    prev = ov_opset.slice(
-        L_body,
-        ov_opset.constant([0], Type.i32).output(0),
-        ov_opset.unsqueeze(k, zero_s).output(0),
-        ov_opset.constant([1], Type.i32).output(0),
-        ov_opset.constant([2], Type.i32).output(0),
+    # Columns >= k of L are still zero, so they add nothing here.
+    row_k = ov_opset.gather(L_body, k_1d, one_s).output(0)
+    acc = ov_opset.matmul(L_body, row_k, False, True).output(0)
+    a_col = ov_opset.gather(
+        A_body, k_1d, ov_opset.constant(2, Type.i32).output(0)
     ).output(0)
-
-    a_col = ov_opset.slice(
-        A_body,
-        ov_opset.unsqueeze(k, zero_s).output(0),
-        ov_opset.unsqueeze(k_p1, zero_s).output(0),
-        ov_opset.constant([1], Type.i32).output(0),
-        ov_opset.constant([2], Type.i32).output(0),
-    ).output(0)
-
-    row_k_prev = ov_opset.slice(
-        prev,
-        ov_opset.unsqueeze(k, zero_s).output(0),
-        ov_opset.unsqueeze(k_p1, zero_s).output(0),
-        ov_opset.constant([1], Type.i32).output(0),
-        ov_opset.constant([1], Type.i32).output(0),
-    ).output(0)
-
-    # acc[b,i] = sum_j L[b,i,j]*L[b,k,j]  via matmul([B,N,k], [B,k,1])
-    acc = ov_opset.matmul(prev, row_k_prev, False, True).output(0)
-
     raw_col = ov_opset.subtract(a_col, acc).output(0)
+    diag_val = ov_opset.gather(raw_col, k_1d, one_s).output(0)
+    new_col = ov_opset.divide(raw_col, ov_opset.sqrt(diag_val)).output(0)
 
-    diag_val = ov_opset.slice(
-        raw_col,
-        ov_opset.unsqueeze(k, zero_s).output(0),
-        ov_opset.unsqueeze(k_p1, zero_s).output(0),
-        ov_opset.constant([1], Type.i32).output(0),
-        ov_opset.constant([1], Type.i32).output(0),
+    row_mask = ov_opset.unsqueeze(
+        ov_opset.greater_equal(idx_body, k).output(0),
+        ov_opset.constant([0, 2], Type.i32).output(0),
     ).output(0)
-
-    L_kk = ov_opset.sqrt(diag_val).output(0)
-    new_col = ov_opset.divide(raw_col, L_kk).output(0)
-
-    # Zero out rows above the diagonal (rows 0..k-1)
-    row_range = ov_opset.range(
-        zero_s, N_body, one_s, output_type=Type.i32
+    col_mask = ov_opset.unsqueeze(
+        ov_opset.equal(idx_body, k).output(0),
+        ov_opset.constant([0, 1], Type.i32).output(0),
     ).output(0)
-    row_mask_1d = ov_opset.greater_equal(row_range, k).output(0)
-    row_mask_3d = ov_opset.unsqueeze(
-        ov_opset.unsqueeze(row_mask_1d, zero_s).output(0),
-        ov_opset.constant(2, Type.i32).output(0),
-    ).output(0)
-    zero_col = ov_opset.broadcast(
-        ov_opset.constant(0.0, work_type).output(0),
-        ov_opset.shape_of(new_col, output_type="i32").output(0),
-    ).output(0)
-    new_col_masked = ov_opset.select(row_mask_3d, new_col, zero_col).output(0)
-
-    # Pad [B,N,1] -> [B,N,N], placing the column at index k
-    pads_begin = ov_opset.concat(
-        [
-            ov_opset.constant([0], Type.i32).output(0),
-            ov_opset.constant([0], Type.i32).output(0),
-            ov_opset.unsqueeze(k, zero_s).output(0),
-        ],
-        0,
-    ).output(0)
-    pads_end = ov_opset.concat(
-        [
-            ov_opset.constant([0], Type.i32).output(0),
-            ov_opset.constant([0], Type.i32).output(0),
-            ov_opset.unsqueeze(
-                ov_opset.subtract(
-                    ov_opset.subtract(N_body, k).output(0), one_s
-                ).output(0),
-                zero_s,
-            ).output(0),
-        ],
-        0,
-    ).output(0)
-    col_padded = ov_opset.pad(
-        new_col_masked, pads_begin, pads_end, "constant"
-    ).output(0)
-
-    col_range = ov_opset.range(
-        zero_s, N_body, one_s, output_type=Type.i32
-    ).output(0)
-    col_mask_1d = ov_opset.equal(col_range, k).output(0)
-    L_shape = ov_opset.shape_of(L_body, output_type="i32").output(0)
-    col_mask_3d = ov_opset.broadcast(
-        ov_opset.unsqueeze(
-            ov_opset.unsqueeze(col_mask_1d, zero_s).output(0),
-            ov_opset.constant(1, Type.i32).output(0),
-        ).output(0),
-        L_shape,
-    ).output(0)
-    row_mask_full = ov_opset.broadcast(
-        ov_opset.unsqueeze(
-            ov_opset.unsqueeze(row_mask_1d, zero_s).output(0),
-            ov_opset.constant(2, Type.i32).output(0),
-        ).output(0),
-        L_shape,
-    ).output(0)
-    update_mask = ov_opset.logical_and(col_mask_3d, row_mask_full).output(0)
-
-    L_next = ov_opset.select(update_mask, col_padded, L_body).output(0)
+    update_mask = ov_opset.logical_and(row_mask, col_mask).output(0)
+    L_next = ov_opset.select(update_mask, new_col, L_body).output(0)
     k_next = ov_opset.add(k, one_s).output(0)
     cond = ov_opset.constant(True, Type.boolean).output(0)
 
     body = Model(
         [L_next, k_next, cond],
-        [A_param, L_param, k_param, B_param, N_param],
+        [A_param, L_param, k_param, idx_param],
     )
     loop.set_function(body)
     loop.set_special_body_ports([-1, 2])
@@ -211,8 +129,7 @@ def cholesky(a, upper=False):
     loop.set_invariant_input(A_param, A_flat)
     loop.set_merged_input(L_param, L_init, L_next)
     loop.set_merged_input(k_param, zero_s, k_next)
-    loop.set_invariant_input(B_param, B_node)
-    loop.set_invariant_input(N_param, N_node)
+    loop.set_invariant_input(idx_param, idx)
 
     L_out = loop.get_iter_value(L_next, -1)
 

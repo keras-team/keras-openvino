@@ -169,11 +169,40 @@ def top_k(x, k, sorted=True, is_stable=True):
     k_tensor = ov_opset.constant(k, dtype=Type.i32)
     axis = -1
     sort_type = "value" if sorted or is_stable else "none"
-    topk_node = ov_opset.topk(
-        x, k_tensor, axis, "max", sort_type, stable=is_stable
+    rank = x.get_partial_shape().rank
+    if not x.get_element_type().is_real() or rank.is_dynamic:
+        topk_node = ov_opset.topk(
+            x, k_tensor, axis, "max", sort_type, stable=is_stable
+        )
+        values = topk_node.output(0)
+        indices = topk_node.output(1)
+        return OpenVINOKerasTensor(values), OpenVINOKerasTensor(indices)
+
+    # TopK ranks nan lowest, but it must rank above inf.
+    batch_dims = rank.get_length() - 1
+    is_nan = ov_opset.is_nan(x).output(0)
+    inf = ov_opset.constant(np.inf, x.get_element_type()).output(0)
+    key = ov_opset.select(is_nan, inf, x).output(0)
+    flat = ov_opset.constant([-1], Type.i32).output(0)
+    zero = ov_opset.constant(0, Type.i32).output(0)
+    num_inf = ov_opset.reduce_sum(
+        ov_opset.convert(ov_opset.equal(x, inf), Type.i32),
+        ov_opset.constant(-1, Type.i32),
     )
-    values = topk_node.output(0)
-    indices = topk_node.output(1)
+    num_inf = ov_opset.reduce_max(ov_opset.reshape(num_inf, flat, False), zero)
+    length = ov_opset.gather(ov_opset.shape_of(x, Type.i32), -1, zero)
+    num_candidates = ov_opset.minimum(ov_opset.add(k_tensor, num_inf), length)
+    candidates = ov_opset.topk(
+        key, num_candidates, axis, "max", "value", stable=True
+    ).output(1)
+    candidate_is_nan = ov_opset.gather(
+        ov_opset.convert(is_nan, Type.i32), candidates, axis, batch_dims
+    )
+    order = ov_opset.topk(
+        candidate_is_nan, k_tensor, axis, "max", "value", stable=True
+    ).output(1)
+    indices = ov_opset.gather(candidates, order, axis, batch_dims).output(0)
+    values = ov_opset.gather(x, indices, axis, batch_dims).output(0)
     return OpenVINOKerasTensor(values), OpenVINOKerasTensor(indices)
 
 

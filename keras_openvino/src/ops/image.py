@@ -1026,7 +1026,9 @@ def perspective_transform(
     images_ov = ov_opset.convert(images_ov, compute_type).output(0)
 
     transforms = get_ov_output(
-        compute_homography_matrix(start_points, end_points)
+        compute_homography_matrix(
+            OpenVINOKerasTensor(sp_ov), OpenVINOKerasTensor(ep_ov)
+        )
     )
 
     shape_node = ov_opset.shape_of(images_ov, output_type=Type.i32).output(0)
