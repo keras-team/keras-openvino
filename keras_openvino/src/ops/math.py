@@ -180,7 +180,11 @@ def top_k(x, k, sorted=True, is_stable=True):
 
     # TopK ranks nan lowest, but it must rank above inf.
     is_nan = ov_opset.is_nan(x).output(0)
-    inf = ov_opset.constant(np.inf, x.get_element_type()).output(0)
+    # OpenVINO cannot build an inf constant in bfloat16 directly.
+    inf = ov_opset.convert(
+        ov_opset.constant(np.array(np.inf, dtype=np.float32)),
+        x.get_element_type(),
+    ).output(0)
     key = ov_opset.select(is_nan, inf, x).output(0)
     flat = ov_opset.constant([-1], Type.i32).output(0)
     zero = ov_opset.constant(0, Type.i32).output(0)
