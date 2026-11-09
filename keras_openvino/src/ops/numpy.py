@@ -5453,6 +5453,10 @@ def logical_xor(x1, x2):
 
 def corrcoef(x):
     x_ov = get_ov_output(x)
+    if x_ov.get_partial_shape().rank.get_length() == 1:
+        x_2d = ov_opset.unsqueeze(x_ov, [0]).output(0)
+        result = get_ov_output(corrcoef(OpenVINOKerasTensor(x_2d)))
+        return OpenVINOKerasTensor(ov_opset.squeeze(result, [0, 1]).output(0))
     x_type = x_ov.get_element_type()
     ov_type = x_type
 
@@ -5490,6 +5494,16 @@ def correlate(x1, x2, mode="valid"):
     output_dtype = OPENVINO_DTYPES[output_dtype]
     x1 = ov_opset.convert(x1, output_dtype).output(0)
     x2 = ov_opset.convert(x2, output_dtype).output(0)
+
+    # Like NumPy, make x1 the longer input.
+    x1_len, x2_len = x1.get_partial_shape()[0], x2.get_partial_shape()[0]
+    swap = (
+        x1_len.is_static
+        and x2_len.is_static
+        and x1_len.get_length() < x2_len.get_length()
+    )
+    if swap:
+        x1, x2 = x2, x1
 
     shape_filter = ov_opset.shape_of(x2, Type.i64).output(0)
     const_two = ov_opset.constant(2, Type.f64).output(0)
@@ -5531,6 +5545,8 @@ def correlate(x1, x2, mode="valid"):
     result = ov_opset.convolution(x1, x2, [1], [0], [0], [1]).output(0)
 
     result = ov_opset.squeeze(result, axes).output(0)
+    if swap:
+        return flip(OpenVINOKerasTensor(result))
 
     return OpenVINOKerasTensor(result)
 

@@ -25,6 +25,7 @@ keras/src/ops/linalg_test.py::LinalgOpsCorrectnessTest::test_eigh
 keras/src/ops/linalg_test.py::LinalgOpsCorrectnessTest::test_lstsq_b_rank_1
 keras/src/ops/linalg_test.py::LinalgOpsCorrectnessTest::test_lstsq_b_rank_2
 keras/src/ops/linalg_test.py::LinalgOpsCorrectnessTest::test_lstsq_rcond
+keras/src/ops/linalg_test.py::LinalgOpsCorrectnessTest::test_lstsq_zero_matrix
 keras/src/ops/math_test.py::MathDtypeTest::test_gammainc_('bfloat16', 'float16')
 keras/src/ops/math_test.py::MathDtypeTest::test_gammainc_('bfloat16', 'float32')
 keras/src/ops/math_test.py::MathDtypeTest::test_gammainc_('bfloat16', 'int16')
@@ -78,6 +79,7 @@ keras/src/ops/nn_test.py::NNOpsCorrectnessTest::test_ctc_decode
 keras/src/ops/nn_test.py::NNOpsDtypeTest::test_ctc_decode_bfloat16
 keras/src/ops/nn_test.py::NNOpsDtypeTest::test_ctc_decode_float16
 keras/src/ops/nn_test.py::NNOpsDtypeTest::test_ctc_decode_float32
+keras/src/ops/numpy_test.py::NumpyOneInputOpsCorrectnessTest::test_signbit
 keras/src/ops/numpy_test.py::NumpyTwoInputOpsCorrectnessTest::test_nextafter_float32
 keras/src/ops/numpy_test.py::NumpyTwoInputOpsCorrectnessTest::test_nextafter_tiny_float32
 keras/src/saving/file_editor_test.py::SavingTest::test_basics
