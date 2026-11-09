@@ -179,7 +179,6 @@ def top_k(x, k, sorted=True, is_stable=True):
         return OpenVINOKerasTensor(values), OpenVINOKerasTensor(indices)
 
     # TopK ranks nan lowest, but it must rank above inf.
-    batch_dims = rank.get_length() - 1
     is_nan = ov_opset.is_nan(x).output(0)
     inf = ov_opset.constant(np.inf, x.get_element_type()).output(0)
     key = ov_opset.select(is_nan, inf, x).output(0)
@@ -195,15 +194,38 @@ def top_k(x, k, sorted=True, is_stable=True):
     candidates = ov_opset.topk(
         key, num_candidates, axis, "max", "value", stable=True
     ).output(1)
-    candidate_is_nan = ov_opset.gather(
-        ov_opset.convert(is_nan, Type.i32), candidates, axis, batch_dims
+    candidate_is_nan = _take_last_axis(
+        ov_opset.convert(is_nan, Type.i32), candidates
     )
     order = ov_opset.topk(
         candidate_is_nan, k_tensor, axis, "max", "value", stable=True
     ).output(1)
-    indices = ov_opset.gather(candidates, order, axis, batch_dims).output(0)
-    values = ov_opset.gather(x, indices, axis, batch_dims).output(0)
+    indices = _take_last_axis(candidates, order)
+    values = _take_last_axis(x, indices)
     return OpenVINOKerasTensor(values), OpenVINOKerasTensor(indices)
+
+
+def _take_last_axis(data, indices):
+    # Gather with batch_dims crashes on CPU when the batch size is 1.
+    i32 = Type.i32
+    zero = ov_opset.constant([0], i32)
+    minus_one = ov_opset.constant([-1], i32)
+    batch_shape = ov_opset.slice(
+        ov_opset.shape_of(indices, i32), zero, minus_one, [1]
+    )
+    num_rows = ov_opset.reduce_prod(batch_shape, zero, keep_dims=False)
+    row_length = ov_opset.gather(ov_opset.shape_of(data, i32), minus_one, 0)
+    offsets = ov_opset.multiply(
+        ov_opset.range(0, num_rows, 1, output_type=i32), row_length
+    )
+    offsets = ov_opset.reshape(
+        offsets,
+        ov_opset.concat([batch_shape, ov_opset.constant([1], i32)], 0),
+        False,
+    )
+    flat_data = ov_opset.reshape(data, minus_one, False)
+    flat_indices = ov_opset.add(indices, offsets)
+    return ov_opset.gather(flat_data, flat_indices, 0).output(0)
 
 
 def in_top_k(targets, predictions, k):
