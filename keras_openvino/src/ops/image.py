@@ -1250,7 +1250,7 @@ def _mirror_index_fixer(index, size_node):
     # Guard mod-by-zero when size == 1
     safe_s2 = ov_opset.maximum(s2, one_c).output(0)
     diff = ov_opset.subtract(
-        ov_opset.mod(ov_opset.add(index, s), safe_s2), s
+        ov_opset.floor_mod(ov_opset.add(index, s), safe_s2), s
     ).output(0)
     # Use max(d, 0-d) instead of abs(d): abs on integers is unreliable
     # under OV's INFERENCE_PRECISION_HINT=f32 for certain graph topologies.
