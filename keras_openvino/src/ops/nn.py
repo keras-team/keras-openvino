@@ -935,7 +935,7 @@ def moments(x, axes, keepdims=False, synchronized=False):
     ori_type = x.get_element_type()
     if ori_type == Type.f16:
         x = ov_opset.convert(x, Type.f32).output(0)
-    axes_c = ov_opset.constant(axes, Type.i32).output(0)
+    axes_c = ov_opset.constant(np.array(axes), Type.i32).output(0)
     const_two = ov_opset.constant(2, x.get_element_type()).output(0)
     mean = ov_opset.reduce_mean(x, axes_c, keepdims).output(0)
     squared_x_mean = ov_opset.reduce_mean(
