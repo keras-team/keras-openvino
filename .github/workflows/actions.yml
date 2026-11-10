@@ -93,6 +93,55 @@ jobs:
 
       # TODO integration tests
 
+  run_keras_hub_tests:
+    if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
+    name: Run keras-hub tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      KERAS_BACKEND: openvino
+
+    steps:
+      - name: Checkout keras-openvino ${{ github.ref }}
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          path: keras-openvino
+          persist-credentials: false
+
+      - name: Checkout keras
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: keras-team/keras
+          ref: master
+          path: keras
+          persist-credentials: false
+
+      - name: Checkout keras-hub
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: keras-team/keras-hub
+          ref: master
+          path: keras-hub
+          persist-credentials: false
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r keras-hub/requirements.txt
+          pip uninstall -y keras
+          pip install -e keras
+          pip install -e keras-openvino
+          pip install --no-deps -e keras-hub
+
+      - name: Run Tests
+        working-directory: ./keras-hub
+        run: pytest keras_hub -n auto --dist loadfile
+
   format:
     name: Check the code format
     runs-on: ubuntu-latest
