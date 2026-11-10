@@ -186,23 +186,27 @@ def top_k(x, k, sorted=True, is_stable=True):
         x.get_element_type(),
     ).output(0)
     key = ov_opset.select(is_nan, inf, x).output(0)
-    flat = ov_opset.constant([-1], Type.i32).output(0)
-    zero = ov_opset.constant(0, Type.i32).output(0)
-    num_inf = ov_opset.reduce_sum(
-        ov_opset.convert(ov_opset.equal(x, inf), Type.i32),
-        ov_opset.constant(-1, Type.i32),
-    )
-    num_inf = ov_opset.reduce_max(ov_opset.reshape(num_inf, flat, False), zero)
-    length = ov_opset.gather(ov_opset.shape_of(x, Type.i32), -1, zero)
-    num_candidates = ov_opset.minimum(ov_opset.add(k_tensor, num_inf), length)
-    candidates = ov_opset.topk(
-        key, num_candidates, axis, "max", "value", stable=True
+    is_nan = ov_opset.convert(is_nan, Type.i32).output(0)
+    # The first k nans, then the top k with nan keyed as inf. Keeping the nans
+    # from the first and the rest from the second leaves at least k entries.
+    first_nans = ov_opset.topk(
+        is_nan, k_tensor, axis, "max", "value", stable=True
     ).output(1)
-    candidate_is_nan = _take_last_axis(
-        ov_opset.convert(is_nan, Type.i32), candidates
+    window = ov_opset.topk(
+        key, k_tensor, axis, "max", "value", stable=True
+    ).output(1)
+    candidates = ov_opset.concat([first_nans, window], axis)
+    keep = ov_opset.equal(
+        _take_last_axis(is_nan, candidates),
+        ov_opset.constant([1] * k + [0] * k, Type.i32),
     )
     order = ov_opset.topk(
-        candidate_is_nan, k_tensor, axis, "max", "value", stable=True
+        ov_opset.convert(keep, Type.i32),
+        k_tensor,
+        axis,
+        "max",
+        "value",
+        stable=True,
     ).output(1)
     indices = _take_last_axis(candidates, order)
     values = _take_last_axis(x, indices)
