@@ -31,9 +31,12 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RESULT: ${{ needs.tests.result }}
           KERAS_SHA: ${{ needs.tests.outputs.keras-sha }}
-          FAILED_TESTS: ${{ needs.tests.outputs.failed-tests }}
+          KERAS_HUB_SHA: ${{ needs.tests.outputs.keras-hub-sha }}
+          KERAS_FAILED_TESTS: ${{ needs.tests.outputs.failed-tests }}
+          KERAS_HUB_FAILED_TESTS: ${{ needs.tests.outputs.keras-hub-failed-tests }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          FAILED_TESTS=$(printf '%s\n%s\n' "$KERAS_FAILED_TESTS" "$KERAS_HUB_FAILED_TESTS" | sed '/^$/d')
           if [ "$RESULT" = "cancelled" ]; then
             status="timed out or was cancelled"
           else
@@ -44,9 +47,15 @@ jobs:
           else
             keras="unknown"
           fi
+          if [ -n "$KERAS_HUB_SHA" ]; then
+            keras_hub="https://github.com/keras-team/keras-hub/commit/$KERAS_HUB_SHA"
+          else
+            keras_hub="unknown"
+          fi
           {
             echo "Run: $RUN_URL"
             echo "Keras commit: $keras"
+            echo "keras-hub commit: $keras_hub"
             echo
             if [ -n "$FAILED_TESTS" ]; then
               echo "Failing tests:"
@@ -59,7 +68,7 @@ jobs:
           } > details.md
 
           gh label create ci-nightly --color B60205 \
-            --description "Nightly CI against Keras master is failing" --force
+            --description "Nightly CI is failing" --force
           issue=$(gh issue list --label ci-nightly --state open \
             --json number --jq '.[0].number')
           if [ -n "$issue" ]; then
@@ -74,13 +83,13 @@ jobs:
             gh issue comment "$issue" --body-file comment.md
           else
             {
-              echo "The nightly run against Keras master $status."
+              echo "The nightly run against Keras master and keras-hub master $status."
               echo
               cat details.md
               echo
               echo "Reference this issue with \`Fixes #<number>\` in the PR that fixes it."
             } > issue.md
             gh issue create --label ci-nightly \
-              --title "Nightly CI against Keras master is failing" \
+              --title "Nightly CI is failing" \
               --body-file issue.md
           fi

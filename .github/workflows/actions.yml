@@ -12,6 +12,10 @@ on:
         value: ${{ jobs.run_cpu_tests.outputs.keras-sha }}
       failed-tests:
         value: ${{ jobs.run_cpu_tests.outputs.failed-tests }}
+      keras-hub-sha:
+        value: ${{ jobs.run_keras_hub_tests.outputs.keras-hub-sha }}
+      keras-hub-failed-tests:
+        value: ${{ jobs.run_keras_hub_tests.outputs.failed-tests }}
 
 permissions:
   contents: read
@@ -94,10 +98,12 @@ jobs:
       # TODO integration tests
 
   run_keras_hub_tests:
-    if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
     name: Run keras-hub tests
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      keras-hub-sha: ${{ steps.keras_hub.outputs.sha }}
+      failed-tests: ${{ steps.summary.outputs.failed }}
 
     env:
       KERAS_BACKEND: openvino
@@ -125,6 +131,10 @@ jobs:
           path: keras-hub
           persist-credentials: false
 
+      - name: Record keras-hub commit
+        id: keras_hub
+        run: echo "sha=$(git -C keras-hub rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Set up Python 3.11
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -140,7 +150,22 @@ jobs:
 
       - name: Run Tests
         working-directory: ./keras-hub
-        run: pytest keras_hub -n auto --dist loadfile
+        run: |
+          set -o pipefail
+          pytest keras_hub -n auto --dist loadfile | tee "$RUNNER_TEMP/pytest.log"
+
+      - name: Collect failed tests
+        id: summary
+        if: always()
+        run: |
+          failed=$(grep -E '^(FAILED|ERROR) ' "$RUNNER_TEMP/pytest.log" 2>/dev/null | sed -E 's/ - .*$//' || true)
+          count=$(printf '%s' "$failed" | grep -c . || true)
+          {
+            echo "failed<<EOF_FAILED"
+            printf '%s\n' "$failed" | head -n 30
+            if [ "$count" -gt 30 ]; then echo "... and $((count - 30)) more"; fi
+            echo "EOF_FAILED"
+          } >> "$GITHUB_OUTPUT"
 
   format:
     name: Check the code format
