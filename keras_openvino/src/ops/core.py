@@ -1344,10 +1344,28 @@ def slice_update(inputs, start_indices, updates):
     if updates.get_partial_shape().rank.get_length() == 0:
         updates = ov_opset.reshape(
             updates, ov_opset.constant([1] * rank, Type.i32), False
-        )
-    stop = ov_opset.add(start, ov_opset.shape_of(updates, Type.i32))
-    step = ov_opset.constant([1] * rank, Type.i32)
-    result = ov_opset.slice_scatter(inputs, updates, start, stop, step)
+        ).output(0)
+    if updates.get_element_type() != inputs.get_element_type():
+        updates = ov_opset.convert(updates, inputs.get_element_type()).output(0)
+    # SliceScatter gives wrong results inside a Loop body on CPU, so pad the
+    # updates to the full shape and select them instead.
+    input_shape = ov_opset.shape_of(inputs, Type.i32)
+    updates_shape = ov_opset.shape_of(updates, Type.i32)
+    pads_end = ov_opset.subtract(
+        ov_opset.subtract(input_shape, start), updates_shape
+    )
+    padded = ov_opset.pad(updates, start, pads_end, "constant")
+    mask = ov_opset.pad(
+        ov_opset.broadcast(
+            ov_opset.constant(True, Type.boolean), updates_shape
+        ),
+        start,
+        pads_end,
+        "constant",
+        ov_opset.constant(False, Type.boolean),
+    )
+    result = ov_opset.select(mask, padded, inputs)
+    result = ov_opset.reshape(result, input_shape, False)
     return OpenVINOKerasTensor(result.output(0))
 
 
