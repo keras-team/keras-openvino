@@ -82,7 +82,7 @@ def soft_shrink(x, threshold=0.5):
 
 
 def hard_shrink(x, threshold=0.5):
-    x = get_ov_output(x)
+    x = promote_to_float(get_ov_output(x))
     et = x.get_element_type()
     thr = get_ov_output(threshold, et)
     zero = get_ov_output(0.0, et)
@@ -97,7 +97,7 @@ def softplus(x):
 
 
 def softsign(x):
-    x = get_ov_output(x)
+    x = promote_to_float(get_ov_output(x))
     return OpenVINOKerasTensor(ov_opset.softsign(x).output(0))
 
 
@@ -299,7 +299,7 @@ def sparsemax(x, axis=-1):
 
 
 def squareplus(x, b=4):
-    x = get_ov_output(x)
+    x = promote_to_float(get_ov_output(x))
     et = x.get_element_type()
     b = get_ov_output(b, et)
     two = get_ov_output(2.0, et)
@@ -936,14 +936,13 @@ def moments(x, axes, keepdims=False, synchronized=False):
     if ori_type == Type.f16:
         x = ov_opset.convert(x, Type.f32).output(0)
     axes_c = ov_opset.constant(np.array(axes), Type.i32).output(0)
-    const_two = ov_opset.constant(2, x.get_element_type()).output(0)
-    mean = ov_opset.reduce_mean(x, axes_c, keepdims).output(0)
-    squared_x_mean = ov_opset.reduce_mean(
-        ov_opset.power(x, const_two).output(0), axes_c, keepdims
+    mean = ov_opset.reduce_mean(x, axes_c, True).output(0)
+    centered = ov_opset.subtract(x, mean).output(0)
+    variance = ov_opset.reduce_mean(
+        ov_opset.multiply(centered, centered), axes_c, keepdims
     ).output(0)
-    variance = ov_opset.subtract(
-        squared_x_mean, ov_opset.power(mean, const_two).output(0)
-    ).output(0)
+    if not keepdims:
+        mean = ov_opset.squeeze(mean, axes_c).output(0)
     if ori_type == Type.f16:
         fp16_max = float(np.finfo(np.float16).max)
         fp16_min = float(np.finfo(np.float16).min)
