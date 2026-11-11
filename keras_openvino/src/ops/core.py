@@ -1347,8 +1347,7 @@ def slice_update(inputs, start_indices, updates):
         ).output(0)
     if updates.get_element_type() != inputs.get_element_type():
         updates = ov_opset.convert(updates, inputs.get_element_type()).output(0)
-    # SliceScatter gives wrong results inside a Loop body on CPU, so pad the
-    # updates to the full shape and select them instead.
+    # https://github.com/openvinotoolkit/openvino/issues/39748
     input_shape = ov_opset.shape_of(inputs, Type.i32)
     updates_shape = ov_opset.shape_of(updates, Type.i32)
     pads_end = ov_opset.subtract(
