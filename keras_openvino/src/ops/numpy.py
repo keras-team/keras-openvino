@@ -15,6 +15,7 @@ from keras.src.backend.common.backend_utils import normalize_shift_and_axis
 from keras_openvino.src.ops.core import OpenVINOKerasTensor
 from keras_openvino.src.ops.core import convert_to_tensor
 from keras_openvino.src.ops.core import get_ov_output
+from keras_openvino.src.ops.core import shape
 from keras_openvino.src.ops.core import shape_to_ov_output
 from keras_openvino.src.ops.core import while_loop
 from keras_openvino.src.utils import DTYPES_MAX
@@ -4230,6 +4231,12 @@ def reshape(x, newshape):
                     dim_tensors.append(
                         ov_opset.constant([val], Type.i32).output(0)
                     )
+            static_dims = [
+                d for d in newshape if not isinstance(d, OpenVINOKerasTensor)
+            ]
+            if 0 in static_dims and not {None, -1} & set(static_dims):
+                # https://github.com/openvinotoolkit/openvino/pull/38029
+                return zeros(newshape, ov_to_keras_type(x.get_element_type()))
             newshape = ov_opset.concat(dim_tensors, 0).output(0)
             return OpenVINOKerasTensor(
                 ov_opset.reshape(x, newshape, False).output(0)
@@ -4497,6 +4504,12 @@ def stack(x, axis=0):
     for i in range(1, len(elems)):
         ref, elems[i] = _align_operand_types(ref, elems[i], "stack()")
     elems[0] = ref
+    ref_tensor = OpenVINOKerasTensor(ref)
+    if ref_tensor.shape is not None and 0 in ref_tensor.shape:
+        # https://github.com/openvinotoolkit/openvino/pull/38029
+        dims = list(shape(ref_tensor))
+        dims.insert(canonicalize_axis(axis, len(dims) + 1), len(elems))
+        return zeros(dims, ov_to_keras_type(ref.get_element_type()))
     const_axis = ov_opset.constant(axis, Type.i32).output(0)
     elems = [ov_opset.unsqueeze(e, const_axis).output(0) for e in elems]
     res = ov_opset.concat(elems, axis).output(0)
