@@ -4216,6 +4216,7 @@ def reshape(x, newshape):
                 break
         if has_dyn:
             # Build a shape tensor from mixed static/dynamic dims
+            newshape_list = newshape
             axis = ov_opset.constant(0, Type.i32).output(0)
             dim_tensors = []
             for d in newshape:
@@ -4231,8 +4232,21 @@ def reshape(x, newshape):
                         ov_opset.constant([val], Type.i32).output(0)
                     )
             newshape = ov_opset.concat(dim_tensors, 0).output(0)
+            result = ov_opset.reshape(x, newshape, False).output(0)
+            # OpenVINO drops every static dim when it cannot bound the
+            # dynamic ones, so restate the known dims.
+            result_shape = ov_opset.shape_of(result, Type.i32).output(0)
+            dims = [
+                ov_opset.constant([d], Type.i32).output(0)
+                if isinstance(d, int) and d >= 0
+                else ov_opset.gather(
+                    result_shape, ov_opset.constant([i], Type.i32), axis
+                ).output(0)
+                for i, d in enumerate(newshape_list)
+            ]
+            known = ov_opset.concat(dims, 0).output(0)
             return OpenVINOKerasTensor(
-                ov_opset.reshape(x, newshape, False).output(0)
+                ov_opset.reshape(result, known, False).output(0)
             )
         newshape = [-1 if d is None else d for d in newshape]
     if isinstance(newshape, OpenVINOKerasTensor):
