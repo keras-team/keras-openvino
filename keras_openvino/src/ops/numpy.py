@@ -2016,10 +2016,24 @@ def flip(x, axis=None):
 
 
 def fliplr(x):
+    x = get_ov_output(x)
+    rank = x.get_partial_shape().rank
+    if rank.is_static and rank.get_length() < 2:
+        raise ValueError(
+            "`fliplr` requires input with 2 or more dimensions. "
+            f"Received: x.shape={x.get_partial_shape()}"
+        )
     return flip(x, axis=1)
 
 
 def flipud(x):
+    x = get_ov_output(x)
+    rank = x.get_partial_shape().rank
+    if rank.is_static and rank.get_length() < 1:
+        raise ValueError(
+            "`flipud` requires input with 1 or more dimensions. "
+            f"Received: x.shape={x.get_partial_shape()}"
+        )
     return flip(x, axis=0)
 
 
@@ -5006,7 +5020,39 @@ def power(x1, x2):
     x1 = get_ov_output(x1, element_type)
     x2 = get_ov_output(x2, element_type)
     x1, x2 = _align_operand_types(x1, x2, "power()")
+    if x1.get_element_type().is_integral():
+        return OpenVINOKerasTensor(_int_power(x1, x2))
     return OpenVINOKerasTensor(ov_opset.power(x1, x2).output(0))
+
+
+def _int_power(x1, x2):
+    # Integer Power saturates, so multiply by squaring to wrap like NumPy.
+    # Multiply saturates on 8-bit types, so narrow types use int32.
+    ov_type = x1.get_element_type()
+    work_type = ov_type if ov_type.bitwidth >= 32 else Type.i32
+    base = ov_opset.convert(x1, work_type).output(0)
+    exp = ov_opset.convert(x2, work_type).output(0)
+    zero = ov_opset.constant(0, work_type).output(0)
+    one = ov_opset.constant(1, work_type).output(0)
+    two = ov_opset.constant(2, work_type).output(0)
+    exp = ov_opset.maximum(exp, zero).output(0)
+    result = one
+    for i in range(ov_type.bitwidth):
+        bit = ov_opset.equal(ov_opset.floor_mod(exp, two), one)
+        result = ov_opset.select(
+            bit, ov_opset.multiply(result, base), result
+        ).output(0)
+        if i < ov_type.bitwidth - 1:
+            base = ov_opset.multiply(base, base).output(0)
+            exp = ov_opset.divide(exp, two).output(0)
+    result = ov_opset.convert(result, ov_type).output(0)
+    if ov_type.is_signed():
+        result = ov_opset.select(
+            ov_opset.less(x2, ov_opset.constant(0, ov_type)),
+            ov_opset.power(x1, x2),
+            result,
+        ).output(0)
+    return result
 
 
 def float_power(x1, x2):
