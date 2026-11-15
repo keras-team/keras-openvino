@@ -299,6 +299,7 @@ class Trainer(BaseTrainer):
         return_dict=False,
         **kwargs,
     ):
+        self._assert_compile_called("evaluate")
         use_cached_eval_dataset = kwargs.pop("_use_cached_eval_dataset", False)
         if kwargs:
             raise ValueError(f"Arguments not recognized: {kwargs}")
