@@ -1,3 +1,4 @@
+import builtins
 import math
 
 import ml_dtypes
@@ -2716,42 +2717,20 @@ def linspace(
     if num < 0:
         raise ValueError("Number of samples, `num`, must be non-negative.")
 
-    if num == 0:
-        empty_shape = ov_opset.constant([0], Type.i32).output(0)
-        result = ov_opset.broadcast(
-            ov_opset.constant(0.0, output_type).output(0), empty_shape
-        ).output(0)
-        if retstep:
-            nan_step = ov_opset.constant(np.nan, output_type).output(0)
-            return OpenVINOKerasTensor(result), OpenVINOKerasTensor(nan_step)
-        return OpenVINOKerasTensor(result)
-
-    if num == 1:
-        result_val = start
-        axis_const = ov_opset.constant([axis], Type.i32).output(0)
-        result = ov_opset.unsqueeze(result_val, axis_const).output(0)
-        if retstep:
-            if endpoint:
-                step = ov_opset.constant(np.nan, output_type).output(0)
-            else:
-                step = ov_opset.subtract(stop, start).output(0)
-            return OpenVINOKerasTensor(result), OpenVINOKerasTensor(step)
     zero_i32 = ov_opset.constant(0, Type.i32).output(0)
     one_i32 = ov_opset.constant(1, Type.i32).output(0)
     one_i32_array = ov_opset.constant([1], Type.i32).output(0)
 
-    num_const = ov_opset.constant(num, output_type).output(0)
-
-    if endpoint:
-        divisor = ov_opset.subtract(
-            num_const, ov_opset.constant(1, output_type).output(0)
-        ).output(0)
-    else:
-        divisor = num_const
-
-    step = ov_opset.divide(
-        ov_opset.subtract(stop, start).output(0), divisor
-    ).output(0)
+    # Like NumPy, the step is NaN when there is no interval to divide.
+    div = num - 1 if endpoint else num
+    delta = ov_opset.subtract(stop, start).output(0)
+    divisor = ov_opset.constant(builtins.max(div, 1), output_type).output(0)
+    step = ov_opset.divide(delta, divisor).output(0)
+    returned_step = step
+    if div <= 0:
+        nan = ov_opset.constant(np.array(np.nan, dtype=np.float32)).output(0)
+        nan = ov_opset.convert(nan, output_type).output(0)
+        returned_step = ov_opset.multiply(delta, nan).output(0)
 
     indices = ov_opset.range(
         zero_i32,
@@ -2799,7 +2778,7 @@ def linspace(
     result = ov_opset.add(start_reshaped, scaled_indices).output(0)
 
     if retstep:
-        return OpenVINOKerasTensor(result), OpenVINOKerasTensor(step)
+        return OpenVINOKerasTensor(result), OpenVINOKerasTensor(returned_step)
     return OpenVINOKerasTensor(result)
 
 
