@@ -28,6 +28,11 @@ from keras_openvino.src.utils import ov_to_keras_type
 
 
 def _promote_binary_op_types(x1, x2):
+    # Lists have no dtype, and arrays may need their 64-bit dtype capped.
+    if isinstance(x1, (list, tuple, np.ndarray)):
+        x1 = convert_to_tensor(x1)
+    if isinstance(x2, (list, tuple, np.ndarray)):
+        x2 = convert_to_tensor(x2)
     t1 = (
         ov_to_keras_type(x1.get_element_type())
         if isinstance(x1, ov.Output)
@@ -4998,19 +5003,7 @@ def true_divide(x1, x2):
 
 
 def power(x1, x2):
-    t1 = (
-        ov_to_keras_type(x1.get_element_type())
-        if isinstance(x1, ov.Output)
-        else getattr(x1, "dtype", type(x1))
-    )
-    t2 = (
-        ov_to_keras_type(x2.get_element_type())
-        if isinstance(x2, ov.Output)
-        else getattr(x2, "dtype", type(x2))
-    )
-    element_type = OPENVINO_DTYPES[result_type(t1, t2)]
-    x1 = get_ov_output(x1, element_type)
-    x2 = get_ov_output(x2, element_type)
+    x1, x2 = _promote_binary_op_types(x1, x2)
     x1, x2 = _align_operand_types(x1, x2, "power()")
     if x1.get_element_type().is_integral():
         return OpenVINOKerasTensor(_int_power(x1, x2))
