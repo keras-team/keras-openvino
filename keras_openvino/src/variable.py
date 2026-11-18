@@ -29,8 +29,11 @@ class Variable(KerasVariable):
     def _convert_to_tensor(self, value, dtype=None):
         return convert_to_tensor(value, dtype=dtype)
 
-    def __array__(self):
-        return convert_to_numpy(self)
+    def __array__(self, dtype=None, *, copy=None):
+        value = convert_to_numpy(self)
+        if copy is not None:
+            return value.__array__(dtype, copy=copy)
+        return value.__array__(dtype)
 
     def __getitem__(self, idx):
         arr = convert_to_numpy(self)

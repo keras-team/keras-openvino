@@ -12,6 +12,7 @@ from openvino import Type
 from openvino import compile_model
 
 from keras.src import tree
+from keras.src.backend import config
 from keras.src.backend.common import KerasTensor
 from keras.src.backend.common import KerasVariable
 from keras.src.backend.common import StatelessScope
@@ -20,6 +21,7 @@ from keras.src.backend.common import result_type
 from keras.src.backend.common import standardize_dtype
 from keras.src.backend.common.backend_utils import empty_scan_ys_spec
 from keras.src.backend.common.backend_utils import slice_along_axis
+from keras.src.backend.common.dtypes import BIT64_TO_BIT32_DTYPE
 from keras_openvino.src.utils import OPENVINO_DTYPES
 from keras_openvino.src.utils import align_operand_types
 from keras_openvino.src.utils import get_device
@@ -473,7 +475,7 @@ class OpenVINOKerasTensor:
         )
         return OpenVINOKerasTensor(ov_opset.mod(first, other).output(0))
 
-    def __array__(self, dtype=None):
+    def __array__(self, dtype=None, *, copy=None):
         try:
             tensor = cast(self, dtype=dtype) if dtype is not None else self
             return convert_to_numpy(tensor)
@@ -717,13 +719,20 @@ def _is_scalar(elem):
     return not isinstance(elem, (list, tuple, set, dict))
 
 
+def _cap_to_32bit(dtype):
+    # Like JAX, 64-bit dtypes become 32-bit unless `x64_mode` keeps them.
+    if config.x64_mode() == "explicit_x64":
+        return dtype
+    return BIT64_TO_BIT32_DTYPE.get(dtype, dtype)
+
+
 def convert_to_tensor(x, dtype=None, sparse=None, ragged=None):
     if sparse:
         raise ValueError("`sparse=True` is not supported with openvino backend")
     if ragged:
         raise ValueError("`ragged=True` is not supported with openvino backend")
     if dtype is not None:
-        dtype = standardize_dtype(dtype)
+        dtype = _cap_to_32bit(standardize_dtype(dtype))
     if isinstance(x, OpenVINOKerasTensor):
         if dtype and dtype != standardize_dtype(x.dtype):
             x = cast(x, dtype)
@@ -732,7 +741,7 @@ def convert_to_tensor(x, dtype=None, sparse=None, ragged=None):
         if dtype is not None:
             ov_type = OPENVINO_DTYPES[dtype]
         else:
-            ov_type = OPENVINO_DTYPES[standardize_dtype(x.dtype)]
+            ov_type = OPENVINO_DTYPES[_cap_to_32bit(standardize_dtype(x.dtype))]
         return OpenVINOKerasTensor(ov_opset.constant(x, ov_type).output(0))
     elif isinstance(x, (list, tuple)):
         if dtype is None:
@@ -761,7 +770,7 @@ def convert_to_tensor(x, dtype=None, sparse=None, ragged=None):
     try:
         if dtype is None:
             dtype = getattr(x, "dtype", original_type)
-            ov_type = OPENVINO_DTYPES[standardize_dtype(dtype)]
+            ov_type = OPENVINO_DTYPES[_cap_to_32bit(standardize_dtype(dtype))]
         else:
             ov_type = OPENVINO_DTYPES[dtype]
         x = np.array(x)

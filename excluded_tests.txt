@@ -5,6 +5,9 @@ keras/src/backend/common/variables_test.py::VariableOpsDTypeTest::test_floordiv_
 keras/src/backend/common/variables_test.py::VariableOpsDTypeTest::test_floordiv_('uint16', 'bool')
 keras/src/backend/common/variables_test.py::VariableOpsDTypeTest::test_floordiv_('uint32', 'bool')
 keras/src/backend/common/variables_test.py::VariableOpsDTypeTest::test_floordiv_('uint8', 'bool')
+keras/src/backend/common/variables_test.py::VariablePropertiesTest::test_standardize_dtype_float64
+keras/src/backend/common/variables_test.py::VariablePropertiesTest::test_standardize_dtype_int64
+keras/src/backend/common/variables_test.py::VariablePropertiesTest::test_standardize_dtype_uint64
 keras/src/callbacks/remote_monitor_test.py::TerminateOnNaNTest::test_RemoteMonitorWithJsonPayload
 keras/src/layers/preprocessing/image_preprocessing/aug_mix_test.py::AugMixTest::test_random_augment_randomness
 keras/src/layers/preprocessing/stft_spectrogram_test.py::TestSpectrogram::test_spectrogram_error
@@ -84,3 +87,4 @@ keras/src/ops/numpy_test.py::NumpyOneInputOpsCorrectnessTest::test_signbit
 keras/src/ops/numpy_test.py::NumpyTwoInputOpsCorrectnessTest::test_nextafter_float32
 keras/src/ops/numpy_test.py::NumpyTwoInputOpsCorrectnessTest::test_nextafter_tiny_float32
 keras/src/saving/file_editor_test.py::SavingTest::test_basics
+keras/src/testing/op_test_case_test.py::CheckInputDtypesTest::test_capped_op_fails_only_in_explicit_x64
