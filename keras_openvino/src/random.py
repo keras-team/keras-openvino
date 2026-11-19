@@ -4,7 +4,7 @@ import numpy as np
 import openvino.opset16 as ov_opset
 from openvino import Type
 
-from keras.src.backend.config import floatx
+from keras.src.backend import config
 from keras.src.random.seed_generator import SeedGenerator  # noqa: F401
 from keras.src.random.seed_generator import draw_seed
 from keras.src.random.seed_generator import make_default_seed  # noqa: F401
@@ -70,7 +70,7 @@ def _random_uniform(shape, minval, maxval, dtype, seed1, seed2):
 
 
 def normal(shape, mean=0.0, stddev=1.0, dtype=None, seed=None):
-    dtype = dtype or floatx()
+    dtype = dtype or config.floatx()
     seed_val = draw_seed(seed)
     if isinstance(seed_val, OpenVINOKerasTensor):
         seed_data = convert_to_numpy(seed_val)
@@ -82,7 +82,7 @@ def normal(shape, mean=0.0, stddev=1.0, dtype=None, seed=None):
 
 
 def uniform(shape, minval=0.0, maxval=1.0, dtype=None, seed=None):
-    dtype = dtype or floatx()
+    dtype = dtype or config.floatx()
     seed_val = draw_seed(seed)
     if isinstance(seed_val, OpenVINOKerasTensor):
         seed_data = convert_to_numpy(seed_val)
@@ -186,7 +186,7 @@ def randint(shape, minval, maxval, dtype="int32", seed=None):
 
 
 def truncated_normal(shape, mean=0.0, stddev=1.0, dtype=None, seed=None):
-    dtype = dtype or floatx()
+    dtype = dtype or config.floatx()
     seed = draw_seed(seed)
     rng = _rng_from_seed_data(seed.data)
 
@@ -339,7 +339,7 @@ def _random_normal(shape, dtype, seed1, seed2):
 
 
 def gamma(shape, alpha, dtype=None, seed=None):
-    dtype = dtype or floatx()
+    dtype = dtype or config.floatx()
     ov_dtype = OPENVINO_DTYPES[dtype]
     seed_val = draw_seed(seed)
     if isinstance(seed_val, OpenVINOKerasTensor):
@@ -415,7 +415,7 @@ def gamma(shape, alpha, dtype=None, seed=None):
 
 
 def binomial(shape, counts, probabilities, dtype=None, seed=None):
-    dtype = dtype or floatx()
+    dtype = dtype or config.floatx()
     ov_dtype = OPENVINO_DTYPES[dtype]
     seed_val = draw_seed(seed)
     if isinstance(seed_val, OpenVINOKerasTensor):

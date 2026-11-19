@@ -4,9 +4,9 @@ import numpy as np
 import openvino.opset16 as ov_opset
 from openvino import Type
 
+from keras.src.backend import config
 from keras.src.backend.common import is_float_dtype
 from keras.src.backend.common import result_type
-from keras.src.backend.config import epsilon
 from keras.src.backend.config import standardize_data_format
 from keras.src.random.seed_generator import draw_seed
 from keras_openvino.src.ops.core import OpenVINOKerasTensor
@@ -111,7 +111,7 @@ def rgb_to_hsv(images, data_format=None):
             "Invalid images dtype: expected float dtype. "
             f"Received: images.dtype={dtype}"
         )
-    eps = ov_opset.constant(epsilon(), dtype=ov_type).output(0)
+    eps = ov_opset.constant(config.epsilon(), dtype=ov_type).output(0)
     images = ov_opset.select(
         ov_opset.less(ov_abs(images), eps),
         ov_opset.constant(0.0, dtype=ov_type),

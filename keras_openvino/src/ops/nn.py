@@ -3,14 +3,13 @@ import openvino.opset16 as ov_opset
 from openvino import Type
 
 import keras_openvino.src.ops.numpy as onp
+from keras.src.backend import config
 from keras.src.backend.common import result_type
 from keras.src.backend.common import standardize_dtype
 from keras.src.backend.common.backend_utils import (
     _get_output_shape_given_tf_padding,
 )
 from keras.src.backend.common.backend_utils import canonicalize_axis
-from keras.src.backend.config import epsilon
-from keras.src.backend.config import floatx
 from keras.src.backend.config import standardize_data_format
 from keras_openvino.src.ops.core import OPENVINO_DTYPES
 from keras_openvino.src.ops.core import OpenVINOKerasTensor
@@ -120,7 +119,7 @@ def leaky_relu(x, negative_slope=0.2):
     x = get_ov_output(x)
     keras_dtype = ov_to_keras_type(x.get_element_type())
     if "int" in keras_dtype or keras_dtype == "bool":
-        x = ov_opset.convert(x, OPENVINO_DTYPES[floatx()]).output(0)
+        x = ov_opset.convert(x, OPENVINO_DTYPES[config.floatx()]).output(0)
     slope_const = ov_opset.constant(
         negative_slope, x.get_element_type()
     ).output(0)
@@ -144,7 +143,7 @@ def hard_sigmoid(x):
     x = get_ov_output(x)
     keras_dtype = ov_to_keras_type(x.get_element_type())
     if "int" in keras_dtype or keras_dtype == "bool":
-        x = ov_opset.convert(x, OPENVINO_DTYPES[floatx()]).output(0)
+        x = ov_opset.convert(x, OPENVINO_DTYPES[config.floatx()]).output(0)
     alpha = get_ov_output(1.0 / 6.0, x.get_element_type())
     beta = get_ov_output(0.5, x.get_element_type())
     return OpenVINOKerasTensor(ov_opset.hard_sigmoid(x, alpha, beta).output(0))
@@ -154,7 +153,7 @@ def hard_silu(x):
     x = get_ov_output(x)
     keras_dtype = ov_to_keras_type(x.get_element_type())
     if "int" in keras_dtype or keras_dtype == "bool":
-        x = ov_opset.convert(x, OPENVINO_DTYPES[floatx()]).output(0)
+        x = ov_opset.convert(x, OPENVINO_DTYPES[config.floatx()]).output(0)
     return OpenVINOKerasTensor(ov_opset.hswish(x).output(0))
 
 
@@ -774,7 +773,7 @@ def one_hot(x, num_classes, axis=-1, dtype=None, sparse=False):
         raise ValueError("`sparse=True` is not supported with openvino backend")
     x = get_ov_output(x)
     if dtype is None:
-        dtype = floatx()
+        dtype = config.floatx()
     ov_dtype = OPENVINO_DTYPES[dtype]
     on_value = get_ov_output(1, ov_dtype)
     off_value = get_ov_output(0, ov_dtype)
@@ -822,7 +821,7 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
         sum_result = ov_opset.reduce_sum(output, axis, keep_dims=True).output(0)
         output = ov_opset.divide(output, sum_result).output(0)
         output = ov_opset.clamp(
-            output, min_value=epsilon(), max_value=1 - epsilon()
+            output, min_value=config.epsilon(), max_value=1 - config.epsilon()
         ).output(0)
         log_prob = ov_opset.log(output).output(0)
     result = ov_opset.multiply(target, log_prob).output(0)
@@ -864,7 +863,7 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
         sum = ov_opset.reduce_sum(output, axis, keep_dims=True).output(0)
         output = ov_opset.divide(output, sum).output(0)
         output = ov_opset.clamp(
-            output, min_value=epsilon(), max_value=1 - epsilon()
+            output, min_value=config.epsilon(), max_value=1 - config.epsilon()
         ).output(0)
         log_prob = ov_opset.log(output).output(0)
 
@@ -888,7 +887,9 @@ def binary_crossentropy(target, output, from_logits=False):
     target = get_ov_output(target)
     output = get_ov_output(output)
     if not output.get_element_type().is_real():
-        output = ov_opset.convert(output, OPENVINO_DTYPES[floatx()]).output(0)
+        output = ov_opset.convert(
+            output, OPENVINO_DTYPES[config.floatx()]
+        ).output(0)
     if target.get_element_type() != output.get_element_type():
         target = ov_opset.convert(target, output.get_element_type()).output(0)
 
@@ -914,7 +915,7 @@ def binary_crossentropy(target, output, from_logits=False):
         return OpenVINOKerasTensor(bce)
 
     output = ov_opset.clamp(
-        output, min_value=epsilon(), max_value=1 - epsilon()
+        output, min_value=config.epsilon(), max_value=1 - config.epsilon()
     ).output(0)
     one = ov_opset.constant(1, target.get_element_type()).output(0)
 
@@ -1008,7 +1009,7 @@ def ctc_loss(target, output, target_length, output_length, mask_index=0):
     ctc_loss_ = ov_opset.ctc_loss(
         output, output_length, target, target_length, blank_index=mask_index
     )
-    ctc_loss_ = ov_opset.convert(ctc_loss_, OPENVINO_DTYPES[floatx()])
+    ctc_loss_ = ov_opset.convert(ctc_loss_, OPENVINO_DTYPES[config.floatx()])
     return OpenVINOKerasTensor(ctc_loss_.output(0))
 
 
@@ -1168,7 +1169,7 @@ def dot_product_attention(
     key = get_ov_output(key)
     value = get_ov_output(value)
     if query.get_element_type() != key.get_element_type():
-        ov_type = OPENVINO_DTYPES[floatx()]
+        ov_type = OPENVINO_DTYPES[config.floatx()]
         query = ov_opset.convert(query, ov_type).output(0)
         key = ov_opset.convert(key, ov_type).output(0)
     if value.get_element_type() != query.get_element_type():
