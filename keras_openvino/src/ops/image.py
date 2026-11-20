@@ -814,6 +814,16 @@ def affine_transform(
         need_squeeze = True
     if len(transform.shape) == 1:
         transform_ov = ov_opset.unsqueeze(transform_ov, axes=[0]).output(0)
+    # A single transform applies to every image in the batch.
+    batch_size = ov_opset.gather(
+        ov_opset.shape_of(images_ov, Type.i32),
+        ov_opset.constant([0], Type.i32),
+        ov_opset.constant(0, Type.i32),
+    )
+    transform_shape = ov_opset.concat(
+        [batch_size, ov_opset.constant([8], Type.i32)], axis=0
+    )
+    transform_ov = ov_opset.broadcast(transform_ov, transform_shape).output(0)
 
     if data_format == "channels_first":
         images_ov = ov_opset.transpose(
