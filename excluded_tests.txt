@@ -86,5 +86,8 @@ keras/src/ops/nn_test.py::NNOpsDtypeTest::test_ctc_decode_float32
 keras/src/ops/numpy_test.py::NumpyOneInputOpsCorrectnessTest::test_signbit
 keras/src/ops/numpy_test.py::NumpyTwoInputOpsCorrectnessTest::test_nextafter_float32
 keras/src/ops/numpy_test.py::NumpyTwoInputOpsCorrectnessTest::test_nextafter_tiny_float32
+keras/src/quantizers/modes/calibration_test.py::CalibrationEinsumLayoutTest::test_batch_axis_calibrates_each_expert_alone_one_group_gptq
+keras/src/quantizers/modes/calibration_test.py::CalibrationEinsumLayoutTest::test_batch_axis_calibrates_each_expert_alone_ragged_gptq
+keras/src/quantizers/modes/calibration_test.py::CalibrationEinsumLayoutTest::test_kernel_without_a_free_axis_matches_dense_gptq
 keras/src/saving/file_editor_test.py::SavingTest::test_basics
 keras/src/testing/op_test_case_test.py::CheckInputDtypesTest::test_capped_op_fails_only_in_explicit_x64

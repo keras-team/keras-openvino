@@ -127,17 +127,15 @@ def multiply(x1, x2):
 
 def mean(x, axis=None, keepdims=False):
     x_ov = get_ov_output(x)
-    x_type = x_ov.get_element_type()
+    if x_ov.get_element_type().is_integral():
+        ov_type = OPENVINO_DTYPES[config.floatx()]
+        x_ov = ov_opset.convert(x_ov, ov_type).output(0)
 
     was_axis_none = axis is None
     x_resolved, axis_resolved = _resolve_axis(x_ov, axis)
 
     if axis_resolved is None:
         return OpenVINOKerasTensor(x_ov)
-
-    if x_type.is_integral():
-        ov_type = OPENVINO_DTYPES[config.floatx()]
-        x_resolved = ov_opset.convert(x_resolved, ov_type).output(0)
 
     result = ov_opset.reduce_mean(x_resolved, axis_resolved, keepdims).output(0)
 
@@ -2796,6 +2794,12 @@ def linspace(
         0
     )
     result = ov_opset.add(start_reshaped, scaled_indices).output(0)
+    if endpoint and num > 1:
+        # Like NumPy, the last sample is exactly `stop`.
+        is_last = ov_opset.constant(np.arange(num) == num - 1).output(0)
+        is_last = ov_opset.reshape(is_last, indices_target_shape, False)
+        stop_reshaped = ov_opset.reshape(stop, start_target_shape, False)
+        result = ov_opset.select(is_last, stop_reshaped, result).output(0)
 
     if retstep:
         return OpenVINOKerasTensor(result), OpenVINOKerasTensor(returned_step)
