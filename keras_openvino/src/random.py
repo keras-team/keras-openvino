@@ -47,9 +47,9 @@ def _random_uniform(shape, minval, maxval, dtype, seed1, seed2):
     """Wrapper for `ov_opset.random_uniform` that sanitizes seed values.
 
     Pybind11 will sign-flip values >= 2**31, and int32 wrap-around can
-    produce negative values. Masks seeds to 31 bits so they are in the range
-    [0, 2**31-1], then clamps to at least 1, as the OpenVINO C++ layer
-    requires each seed to be strictly positive (> 0).
+    produce negative values. Maps seeds into [1, 2**31-1], as the OpenVINO
+    C++ layer requires each seed to be strictly positive (> 0). Distinct seeds
+    stay distinct, so a `SeedGenerator` gives new values on every draw.
 
     Args:
         shape: The shape of the random tensor.
@@ -62,8 +62,8 @@ def _random_uniform(shape, minval, maxval, dtype, seed1, seed2):
     Returns:
         An OpenVINO output tensor with random values.
     """
-    safe_seed1 = max(1, int(seed1) & 0x7FFFFFFF)
-    safe_seed2 = max(1, int(seed2) & 0x7FFFFFFF)
+    safe_seed1 = int(seed1) % 0x7FFFFFFF + 1
+    safe_seed2 = int(seed2) % 0x7FFFFFFF + 1
     return ov_opset.random_uniform(
         shape, minval, maxval, dtype, safe_seed1, safe_seed2
     ).output(0)
