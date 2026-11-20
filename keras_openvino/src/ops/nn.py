@@ -5,12 +5,12 @@ from openvino import Type
 import keras_openvino.src.ops.numpy as onp
 from keras.src.backend import config
 from keras.src.backend.common import result_type
+from keras.src.backend.common import standardize_data_format
 from keras.src.backend.common import standardize_dtype
 from keras.src.backend.common.backend_utils import (
     _get_output_shape_given_tf_padding,
 )
 from keras.src.backend.common.backend_utils import canonicalize_axis
-from keras.src.backend.config import standardize_data_format
 from keras_openvino.src.ops.core import OPENVINO_DTYPES
 from keras_openvino.src.ops.core import OpenVINOKerasTensor
 from keras_openvino.src.ops.core import get_ov_output
