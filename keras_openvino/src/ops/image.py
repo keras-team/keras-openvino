@@ -7,7 +7,7 @@ from openvino import Type
 from keras.src.backend import config
 from keras.src.backend.common import is_float_dtype
 from keras.src.backend.common import result_type
-from keras.src.backend.config import standardize_data_format
+from keras.src.backend.common import standardize_data_format
 from keras.src.random.seed_generator import draw_seed
 from keras_openvino.src.ops.core import OpenVINOKerasTensor
 from keras_openvino.src.ops.core import cast
