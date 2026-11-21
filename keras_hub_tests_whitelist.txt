@@ -35,7 +35,6 @@ keras_hub/src/utils/audio_utils_test.py
 keras_hub/src/utils/coco
 keras_hub/src/utils/imagenet
 keras_hub/src/utils/keras_utils_test.py
-keras_hub/src/utils/openvino_utils_test.py
 keras_hub/src/utils/pipeline_model_test.py
 keras_hub/src/utils/preset_utils_test.py
 keras_hub/src/utils/python_utils_test.py
