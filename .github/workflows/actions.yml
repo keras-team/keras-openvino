@@ -154,6 +154,19 @@ jobs:
           set -o pipefail
           pytest keras_hub -n auto --dist loadfile | tee "$RUNNER_TEMP/pytest.log"
 
+      - name: Run integration tests
+        working-directory: ./keras-hub/integration_tests
+        run: |
+          set -o pipefail
+          pytest . -k "not NoTensorflow" | tee -a "$RUNNER_TEMP/pytest.log"
+
+      - name: Run no tensorflow integration test
+        working-directory: ./keras-hub/integration_tests
+        run: |
+          set -o pipefail
+          pip uninstall -y tensorflow-text tensorflow
+          pytest . -k "NoTensorflow" | tee -a "$RUNNER_TEMP/pytest.log"
+
       - name: Collect failed tests
         id: summary
         if: always()
