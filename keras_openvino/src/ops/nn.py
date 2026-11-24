@@ -48,7 +48,7 @@ def celu(x, alpha=1.0):
 
 
 def sigmoid(x):
-    x = get_ov_output(x)
+    x = promote_to_float(get_ov_output(x))
     return OpenVINOKerasTensor(ov_opset.sigmoid(x).output(0))
 
 
@@ -191,7 +191,7 @@ def glu(x, axis=-1):
 
 
 def softmax(x, axis=-1):
-    x = get_ov_output(x)
+    x = promote_to_float(get_ov_output(x))
     if axis is None:
         x_shape = ov_opset.shape_of(x)
         flatten_shape = ov_opset.constant([-1], Type.i32).output(0)
@@ -212,7 +212,7 @@ def softmax(x, axis=-1):
 
 
 def log_softmax(x, axis=-1):
-    x = get_ov_output(x)
+    x = promote_to_float(get_ov_output(x))
     if isinstance(axis, (tuple, list)) and not axis:
         return OpenVINOKerasTensor(x)
     if axis is None:
