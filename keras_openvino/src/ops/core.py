@@ -1464,43 +1464,52 @@ def switch(index, branches, *operands):
         return wrapped[0]
 
 
-def _walk_body_nodes(results, params):
-    """Yield the loop body nodes reachable from `results`."""
-    boundary = {p.get_instance_id() for p in params}
+def _bind_captured_outputs(results, params, boundary_id):
+    """Cuts the loop body off from the outer graph.
+
+    The body reads outer outputs, which are the nodes created before
+    `boundary_id`. Each becomes an inner parameter bound as an invariant
+    input, and only the body's own nodes are rewired, as the outer ones are
+    shared with the rest of the graph.
+
+    Returns the results and the `(inner parameter, outer output)` pairs.
+    """
+    declared = {p.get_instance_id() for p in params}
+    captured = {}
+
+    def capture(output):
+        node = output.get_node()
+        node_id = node.get_instance_id()
+        if (
+            node_id > boundary_id
+            or node_id in declared
+            or node.get_type_name() == "Constant"
+        ):
+            return output
+        key = (node_id, output.get_index())
+        if key not in captured:
+            inner = ov_opset.parameter(
+                output.get_partial_shape(), output.get_element_type()
+            )
+            captured[key] = (inner, output)
+        return captured[key][0].output(0)
+
+    results = [capture(result) for result in results]
     seen = set()
-    stack = [r.get_node() for r in results]
+    stack = [result.get_node() for result in results]
     while stack:
         node = stack.pop()
         node_id = node.get_instance_id()
-        if node_id in seen:
+        if node_id in seen or node_id in declared or node_id <= boundary_id:
             continue
         seen.add(node_id)
-        yield node
-        if node_id in boundary:
-            continue
-        for node_input in node.inputs():
-            stack.append(node_input.get_source_output().get_node())
-
-
-def _collect_captured_parameters(results, params):
-    """Return outer-graph Parameters captured by the loop body."""
-    declared = {p.get_instance_id() for p in params}
-    captured = {}
-    for node in _walk_body_nodes(results, params):
-        node_id = node.get_instance_id()
-        if node.get_type_name() == "Parameter" and node_id not in declared:
-            captured[node_id] = node
-    return [captured[k] for k in sorted(captured)]
-
-
-def _rewire_within(results, params, old_param, new_param):
-    """Rewire the body's uses of `old_param` to `new_param`."""
-    target = old_param.get_instance_id()
-    for node in _walk_body_nodes(results, params):
         for node_input in node.inputs():
             source = node_input.get_source_output()
-            if source.get_node().get_instance_id() == target:
-                node_input.replace_source_output(new_param.output(0))
+            replacement = capture(source)
+            if replacement is not source:
+                node_input.replace_source_output(replacement)
+            stack.append(replacement.get_node())
+    return results, list(captured.values())
 
 
 def while_loop(
@@ -1564,6 +1573,8 @@ def while_loop(
 
     shapes = [var.get_partial_shape() for var in loop_vars_ov]
     types = [var.get_element_type() for var in loop_vars_ov]
+    # Nodes created from here on belong to the loop body.
+    boundary_id = ov_opset.constant(0, Type.i32).get_instance_id()
     params = [
         ov_opset.parameter(shape, dtype) for shape, dtype in zip(shapes, types)
     ]
@@ -1597,32 +1608,27 @@ def while_loop(
     results = [cond_output] + [get_ov_output(x) for x in flat_body_out]
 
     # Bind tensors captured from the outer graph as invariant inputs.
-    captured = _collect_captured_parameters(results, params)
-    invariant_inputs = []
+    results, invariant_inputs = _bind_captured_outputs(
+        results, params, boundary_id
+    )
     loop_var_params = list(params)
-    for outer_param in captured:
-        inner_param = ov_opset.parameter(
-            outer_param.get_partial_shape(), outer_param.get_element_type()
-        )
-        _rewire_within(results, params, outer_param, inner_param)
-        params.append(inner_param)
-        invariant_inputs.append((inner_param, outer_param.output(0)))
+    params.extend(inner_param for inner_param, _ in invariant_inputs)
 
     body_func = Model(results=results, parameters=params)
     loop.set_function(body_func)
     loop.set_special_body_ports([-1, 0])
 
+    body_outputs = results[1:]
     for param, init_val, next_val in zip(
-        loop_var_params, loop_vars_ov, flat_body_out
+        loop_var_params, loop_vars_ov, body_outputs
     ):
-        loop.set_merged_input(param, init_val, get_ov_output(next_val))
+        loop.set_merged_input(param, init_val, next_val)
 
     for inner_param, outer_value in invariant_inputs:
         loop.set_invariant_input(inner_param, outer_value)
 
     outputs_flat = [
-        OpenVINOKerasTensor(loop.get_iter_value(get_ov_output(val)))
-        for val in flat_body_out
+        OpenVINOKerasTensor(loop.get_iter_value(val)) for val in body_outputs
     ]
     final_output, _ = pack_structure(loop_vars, outputs_flat)
 
