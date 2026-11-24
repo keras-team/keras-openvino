@@ -12,6 +12,7 @@ from keras_openvino.src.ops.core import cast
 from keras_openvino.src.ops.core import get_ov_output
 from keras_openvino.src.utils import OPENVINO_DTYPES
 from keras_openvino.src.utils import ov_to_keras_type
+from keras_openvino.src.utils import promote_to_float
 
 INT32_MAX = 2**31 - 1
 
@@ -979,14 +980,14 @@ def istft(
 
 
 def rsqrt(x):
-    x = get_ov_output(x)
+    x = promote_to_float(get_ov_output(x))
     const_one = ov_opset.constant(1, x.get_element_type()).output(0)
     sqrt = ov_opset.sqrt(x).output(0)
     return OpenVINOKerasTensor(ov_opset.divide(const_one, sqrt).output(0))
 
 
 def erf(x):
-    x = get_ov_output(x)
+    x = promote_to_float(get_ov_output(x))
     erf = ov_opset.erf(x).output(0)
     return OpenVINOKerasTensor(erf)
 
@@ -1001,7 +1002,7 @@ def erfc(x):
 
 
 def erfinv(x):
-    x = get_ov_output(x)
+    x = promote_to_float(get_ov_output(x))
     return OpenVINOKerasTensor(ov_opset17.erfinv(x).output(0))
 
 
