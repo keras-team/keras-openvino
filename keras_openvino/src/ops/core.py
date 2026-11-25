@@ -35,14 +35,6 @@ def device_scope(device_name):
     yield
 
 
-# For backwards compatibility, will be removed
-# https://github.com/keras-team/keras/issues/24352
-def random_seed_dtype():
-    from keras_openvino.src.random import seed_dtype
-
-    return seed_dtype()
-
-
 # wrapper for OpenVINO symbolic tensor ov.Output
 # that provides interface similar to KerasTensor
 # with dtype and shape members
