@@ -15,6 +15,14 @@ from keras_openvino.src.ops.core import get_ov_output
 from keras_openvino.src.utils import OPENVINO_DTYPES
 
 
+def seed_dtype():
+    # OpenVINO arithmetic promotes uint32 * int32 → int32 (Python ints are
+    # i32 in get_ov_output), so the seed tensor from SeedGenerator.next()
+    # ends up as int32. Returning int32 keeps the declared dtype consistent
+    # with what the backend actually produces.
+    return "int32"
+
+
 def _np_to_ov_const(arr):
     """Create an OV Constant from a numpy array, handling bfloat16 specially.
 
