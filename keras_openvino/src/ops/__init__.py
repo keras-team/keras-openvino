@@ -4,4 +4,25 @@ from keras_openvino.src.ops import linalg
 from keras_openvino.src.ops import math
 from keras_openvino.src.ops import nn
 from keras_openvino.src.ops import numpy
-from keras_openvino.src.ops.core import *  # noqa: F403
+from keras_openvino.src.ops.core import associative_scan
+from keras_openvino.src.ops.core import cast
+from keras_openvino.src.ops.core import cond
+from keras_openvino.src.ops.core import convert_to_numpy
+from keras_openvino.src.ops.core import convert_to_tensor
+from keras_openvino.src.ops.core import custom_gradient
+from keras_openvino.src.ops.core import fori_loop
+from keras_openvino.src.ops.core import grad
+from keras_openvino.src.ops.core import is_tensor
+from keras_openvino.src.ops.core import map
+from keras_openvino.src.ops.core import remat
+from keras_openvino.src.ops.core import scan
+from keras_openvino.src.ops.core import scatter
+from keras_openvino.src.ops.core import scatter_update
+from keras_openvino.src.ops.core import shape
+from keras_openvino.src.ops.core import slice
+from keras_openvino.src.ops.core import slice_update
+from keras_openvino.src.ops.core import stop_gradient
+from keras_openvino.src.ops.core import switch
+from keras_openvino.src.ops.core import unstack
+from keras_openvino.src.ops.core import vectorized_map
+from keras_openvino.src.ops.core import while_loop
