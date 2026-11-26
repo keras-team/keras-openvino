@@ -28,7 +28,11 @@ keras_hub/src/layers/preprocessing/random_deletion_test.py
 keras_hub/src/layers/preprocessing/random_swap_test.py
 keras_hub/src/layers/preprocessing/start_end_packer_test.py
 keras_hub/src/metrics
+keras_hub/src/samplers/beam_sampler_test.py
+keras_hub/src/samplers/contrastive_sampler_test.py
 keras_hub/src/samplers/serialization_test.py
+keras_hub/src/samplers/top_k_sampler_test.py
+keras_hub/src/samplers/top_p_sampler_test.py
 keras_hub/src/tests
 keras_hub/src/tokenizers
 keras_hub/src/utils/audio_utils_test.py

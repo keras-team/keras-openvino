@@ -1,5 +1,6 @@
 import builtins
 import contextlib
+import logging
 import warnings
 
 import ml_dtypes
@@ -774,6 +775,53 @@ def convert_to_tensor(x, dtype=None, sparse=None, ragged=None):
         )
 
 
+def _try_eval_constant(ov_output):
+    """Try to evaluate ov_output as a numpy array (no upstream Parameters).
+
+    Returns the numpy array on success, or None if the subgraph contains
+    Parameter nodes (i.e. depends on runtime input) or evaluation fails.
+    """
+    try:
+        return convert_to_numpy(OpenVINOKerasTensor(ov_output))
+    except (RuntimeError, ValueError, TypeError) as e:
+        logging.debug("_try_eval_constant: could not evaluate subgraph: %s", e)
+        return None
+
+
+def _feed_loop_inputs(model):
+    # The CPU plugin fails on Loops with constant inputs.
+    if not any(op.get_type_name() == "Loop" for op in model.get_ops()):
+        return model, []
+    model = model.clone()
+    loops = [
+        op for op in model.get_ordered_ops() if op.get_type_name() == "Loop"
+    ]
+    loop_inputs = [op_input for loop in loops for op_input in loop.inputs()[2:]]
+    values = []
+    for op_input in loop_inputs:
+        source = op_input.get_source_output()
+        node = source.get_node()
+        if node.get_type_name() == "Constant":
+            values.append(node.get_tensor_view())
+        else:
+            values.append(convert_to_numpy(OpenVINOKerasTensor(source)))
+    params = []
+    for op_input in loop_inputs:
+        source = op_input.get_source_output()
+        param = ov_opset.parameter(
+            source.get_partial_shape(), source.get_element_type()
+        )
+        op_input.replace_source_output(param.output(0))
+        params.append(param)
+    for loop in loops:
+        # Unused outputs fail at inference.
+        for output in loop.outputs():
+            if not output.get_target_inputs():
+                model.add_results([ov_opset.result(output)])
+    model.add_parameters(params)
+    return model, values
+
+
 def convert_to_numpy(x):
     if isinstance(x, np.ndarray):
         return x
@@ -821,12 +869,13 @@ def convert_to_numpy(x):
             ov_result = ov_opset.convert(ov_result, Type.i32).output(0)
             casted_from_bool = True
         ov_model = Model(results=[ov_result], parameters=[])
+        ov_model, inputs = _feed_loop_inputs(ov_model)
         ov_compiled_model = compile_model(
             ov_model,
             get_device(),
             config={"INFERENCE_PRECISION_HINT": "f32"},
         )
-        result = ov_compiled_model({})[0]
+        result = ov_compiled_model(inputs)[0]
         if casted_from_bool:
             result = result.astype(bool)
     except Exception as inner_exception:
@@ -1550,8 +1599,27 @@ def while_loop(
                 f"Received: {type(loop_vars)}"
             )
 
+    def check_cond(fn, args):
+        out = fn(args) if isinstance(args, dict) else fn(*args)
+        out = get_ov_output(out)
+        if len(out.get_partial_shape()) != 0:
+            raise ValueError(
+                "`cond` function must return a scalar boolean value, "
+                "but got shape {}".format(out.get_partial_shape())
+            )
+        if out.get_element_type() != Type.boolean:
+            out = ov_opset.convert(out, Type.boolean).output(0)
+        return out
+
     flat_loop_vars = flatten_structure(loop_vars)
     loop_vars_ov = [get_ov_output(var) for var in flat_loop_vars]
+
+    init_args, _ = pack_structure(
+        loop_vars, [OpenVINOKerasTensor(v) for v in loop_vars_ov]
+    )
+    init_result = init_args[0] if is_scalar_input else init_args
+    if isinstance(maximum_iterations, int) and maximum_iterations <= 0:
+        return init_result
 
     maximum_iterations = (
         ov_opset.constant(-1, Type.i32).output(0)
@@ -1560,7 +1628,13 @@ def while_loop(
     )
 
     trip_count = maximum_iterations
-    execution_condition = ov_opset.constant(True, Type.boolean).output(0)
+    execution_condition = check_cond(cond, init_args)
+    init_cond = _try_eval_constant(execution_condition)
+    if init_cond is not None:
+        # Shape inference fails on a constant false condition.
+        if not init_cond:
+            return init_result
+        execution_condition = ov_opset.constant(True, Type.boolean).output(0)
     loop = ov_opset.loop(trip_count, execution_condition)
 
     shapes = [var.get_partial_shape() for var in loop_vars_ov]
@@ -1582,16 +1656,7 @@ def while_loop(
         body_out = (body_out,)
 
     flat_body_out = flatten_structure(body_out)
-    if isinstance(packed_args, dict):
-        cond_output = get_ov_output(cond(body_out))
-    else:
-        cond_output = get_ov_output(cond(*body_out))
-
-    if len(cond_output.get_partial_shape()) != 0:
-        raise ValueError(
-            "`cond` function must return a scalar boolean value, "
-            "but got shape {}".format(cond_output.get_partial_shape())
-        )
+    cond_output = check_cond(cond, body_out)
 
     for p, out in zip(params, flat_body_out):
         out_shape = get_ov_output(out).get_partial_shape()
