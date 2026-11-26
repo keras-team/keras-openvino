@@ -22,6 +22,7 @@ keras_hub/src/layers/modeling/token_and_position_embedding_test.py
 keras_hub/src/layers/modeling/transformer_encoder_test.py
 keras_hub/src/layers/modeling/transformer_layer_utils_test.py
 keras_hub/src/layers/preprocessing/audio_converter_test.py
+keras_hub/src/layers/preprocessing/image_converter_test.py
 keras_hub/src/layers/preprocessing/masked_lm_mask_generator_test.py
 keras_hub/src/layers/preprocessing/multi_segment_packer_test.py
 keras_hub/src/layers/preprocessing/random_deletion_test.py

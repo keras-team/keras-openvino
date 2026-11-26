@@ -642,19 +642,11 @@ def get_ov_output(x, ov_type=None, context_dtype=None):
     if isinstance(x, float):
         if ov_type is None:
             ov_type = Type.f32
-        if ov_type == Type.bf16:
-            x = ov_opset.constant(x, Type.f32).output(0)
-            x = ov_opset.convert(x, Type.bf16).output(0)
-        else:
-            x = ov_opset.constant(x, ov_type).output(0)
+        x = make_constant(x, ov_type)
     elif isinstance(x, int):
         if ov_type is None:
             ov_type = Type.i32
-        if ov_type == Type.bf16:
-            x = ov_opset.constant(float(x), Type.f32).output(0)
-            x = ov_opset.convert(x, Type.bf16).output(0)
-        else:
-            x = ov_opset.constant(x, ov_type).output(0)
+        x = make_constant(x, ov_type)
     elif isinstance(x, np.ndarray):
         if x.dtype == "bfloat16":
             x = ov_opset.constant(x, OPENVINO_DTYPES["bfloat16"]).output(0)
@@ -888,6 +880,15 @@ def cast(x, dtype):
     dtype = standardize_dtype(dtype)
     ov_type = OPENVINO_DTYPES[dtype]
     x = get_ov_output(x)
+    node = x.get_node()
+    half_types = (Type.bf16, Type.f16)
+    if (
+        ov_type in half_types
+        and x.get_element_type() not in half_types
+        and node.get_type_name() == "Constant"
+    ):
+        # OpenVINO truncates to bf16, so round constants in NumPy.
+        return OpenVINOKerasTensor(make_constant(node.data, ov_type))
     return OpenVINOKerasTensor(ov_opset.convert(x, ov_type).output(0))
 
 
