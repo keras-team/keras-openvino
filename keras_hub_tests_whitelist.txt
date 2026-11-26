@@ -228,6 +228,7 @@ keras_hub/src/models/rwkv7/rwkv7_tokenizer_test.py
 keras_hub/src/models/sam/sam_image_segmenter_test.py
 keras_hub/src/models/sam/sam_mask_decoder_test.py
 keras_hub/src/models/sam/sam_prompt_encoder_test.py
+keras_hub/src/models/sam3/sam3_pc_image_segmenter_test.py::SAM3PromptableConceptImageSegmenterTest::test_end_to_end_model_predict
 keras_hub/src/models/segformer
 keras_hub/src/models/seq_2_seq_lm_preprocessor_test.py
 keras_hub/src/models/siglip
