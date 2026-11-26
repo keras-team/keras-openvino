@@ -615,6 +615,21 @@ class OpenVINOKerasTensor:
         return OpenVINOKerasTensor(ov_opset.squeeze(first, axes).output(0))
 
 
+def make_constant(x, ov_type):
+    # Round in NumPy like JAX, so out-of-range values become inf.
+    np_type = {Type.bf16: ml_dtypes.bfloat16, Type.f16: np.float16}.get(ov_type)
+    x = np.asarray(x)
+    if np_type is not None and x.dtype != np_type:
+        with np.errstate(over="ignore"):
+            x = x.astype(np_type)
+    if ov_type == Type.bf16:
+        # Raw bits, since OpenVINO rejects bf16 inf and nan.
+        bits = np.ascontiguousarray(x).view(np.uint16)
+        bits = Tensor(bits, x.shape, Type.bf16)
+        return ov_opset.constant(bits, shared_memory=False).output(0)
+    return ov_opset.constant(x, ov_type).output(0)
+
+
 # create ov.Output (symbolic OpenVINO tensor)
 # for different input `x`
 def get_ov_output(x, ov_type=None, context_dtype=None):
@@ -734,7 +749,7 @@ def convert_to_tensor(x, dtype=None, sparse=None, ragged=None):
             ov_type = OPENVINO_DTYPES[dtype]
         else:
             ov_type = OPENVINO_DTYPES[_cap_to_32bit(standardize_dtype(x.dtype))]
-        return OpenVINOKerasTensor(ov_opset.constant(x, ov_type).output(0))
+        return OpenVINOKerasTensor(make_constant(x, ov_type))
     elif isinstance(x, (list, tuple)):
         if dtype is None:
             dtype = result_type(
@@ -745,12 +760,12 @@ def convert_to_tensor(x, dtype=None, sparse=None, ragged=None):
             )
         x = np.array(x, dtype=dtype)
         ov_type = OPENVINO_DTYPES[dtype]
-        return OpenVINOKerasTensor(ov_opset.constant(x, ov_type).output(0), x)
+        return OpenVINOKerasTensor(make_constant(x, ov_type), x)
     elif isinstance(x, (float, int, bool)):
         if dtype is None:
             dtype = standardize_dtype(type(x))
         ov_type = OPENVINO_DTYPES[dtype]
-        return OpenVINOKerasTensor(ov_opset.constant(x, ov_type).output(0), x)
+        return OpenVINOKerasTensor(make_constant(x, ov_type), x)
     elif isinstance(x, ov.Output):
         return OpenVINOKerasTensor(x)
     if isinstance(x, KerasVariable):
@@ -765,8 +780,7 @@ def convert_to_tensor(x, dtype=None, sparse=None, ragged=None):
             ov_type = OPENVINO_DTYPES[_cap_to_32bit(standardize_dtype(dtype))]
         else:
             ov_type = OPENVINO_DTYPES[dtype]
-        x = np.array(x)
-        return OpenVINOKerasTensor(ov_opset.constant(x, ov_type).output(0))
+        return OpenVINOKerasTensor(make_constant(x, ov_type))
     except Exception as e:
         raise TypeError(
             f"Cannot convert object of type {original_type} "
