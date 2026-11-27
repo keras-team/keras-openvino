@@ -15,6 +15,7 @@ from keras.src.backend.common.backend_utils import normalize_shift_and_axis
 from keras_openvino.src.ops.core import OpenVINOKerasTensor
 from keras_openvino.src.ops.core import convert_to_tensor
 from keras_openvino.src.ops.core import get_ov_output
+from keras_openvino.src.ops.core import make_constant
 from keras_openvino.src.ops.core import shape
 from keras_openvino.src.ops.core import shape_to_ov_output
 from keras_openvino.src.ops.core import while_loop
@@ -374,9 +375,10 @@ def arange(start, stop=None, step=None, dtype=None):
             else result_type(type(_start), type(_stop), type(_step), "int32")
         )
         return OpenVINOKerasTensor(
-            ov_opset.constant(
-                np.arange(_start, _stop, _step, dtype=keras_dtype)
-            ).output(0)
+            make_constant(
+                np.arange(_start, _stop, _step, dtype=keras_dtype),
+                OPENVINO_DTYPES[keras_dtype],
+            )
         )
 
     if stop is None:
@@ -1294,8 +1296,10 @@ def clip(x, x_min, x_max):
     x_type = x.get_element_type()
     if x_type == Type.boolean:
         x = ov_opset.convert(x, Type.i32).output(0)
-    x_min = get_ov_output(x_min, x.get_element_type())
-    x_max = get_ov_output(x_max, x.get_element_type())
+    # Keep the dtype of `x`, like Keras's output spec.
+    x_type = x.get_element_type()
+    x_min = ov_opset.convert(get_ov_output(x_min, x_type), x_type).output(0)
+    x_max = ov_opset.convert(get_ov_output(x_max, x_type), x_type).output(0)
     clip_by_min = ov_opset.maximum(x, x_min).output(0)
     clip_by_max = ov_opset.minimum(clip_by_min, x_max).output(0)
     return OpenVINOKerasTensor(clip_by_max)
@@ -3915,9 +3919,7 @@ def pad(x, pad_width, mode="constant", constant_values=None):
                 "in constant mode with the openvino backend. "
                 f"Received: constant_values={constant_values}"
             )
-        pad_value = ov_opset.constant(
-            constant_values, x.get_element_type()
-        ).output(0)
+        pad_value = make_constant(constant_values, x.get_element_type())
 
     if len(pad_width) == 1:
         # A single `(before, after)` pair broadcasts to every axis, matching
