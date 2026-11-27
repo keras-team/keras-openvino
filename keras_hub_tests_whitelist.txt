@@ -113,6 +113,7 @@ keras_hub/src/models/causal_lm_preprocessor_test.py
 keras_hub/src/models/clip/clip_preprocessor_test.py
 keras_hub/src/models/clip/clip_tokenizer_test.py
 keras_hub/src/models/cspnet
+keras_hub/src/models/d_fine/d_fine_object_detector_test.py
 keras_hub/src/models/deberta_v3
 keras_hub/src/models/deeplab_v3
 keras_hub/src/models/deit
@@ -189,6 +190,7 @@ keras_hub/src/models/moonshine/moonshine_tokenizer_test.py
 keras_hub/src/models/mpnet
 keras_hub/src/models/muse_glimmer/muse_glimmer_assistant_causal_lm_test.py
 keras_hub/src/models/muse_glimmer/muse_glimmer_attention_test.py
+keras_hub/src/models/muse_glimmer/muse_glimmer_backbone_test.py
 keras_hub/src/models/muse_glimmer/muse_glimmer_causal_lm_preprocessor_test.py
 keras_hub/src/models/muse_glimmer/muse_glimmer_decoder_test.py
 keras_hub/src/models/muse_glimmer/muse_glimmer_layers_test.py
@@ -238,6 +240,7 @@ keras_hub/src/models/smolvlm2/smolvlm2_causal_lm_test.py
 keras_hub/src/models/smolvlm2/smolvlm2_tokenizer_test.py
 keras_hub/src/models/smolvlm2/smolvlm2_video_converter_test.py
 keras_hub/src/models/smolvlm2/smolvlm2_vision_encoder_test.py
+keras_hub/src/models/stable_diffusion_3/stable_diffusion_3_backbone_test.py
 keras_hub/src/models/stable_diffusion_3/stable_diffusion_3_image_to_image_test.py
 keras_hub/src/models/stable_diffusion_3/stable_diffusion_3_inpaint_test.py
 keras_hub/src/models/stable_diffusion_3/stable_diffusion_3_text_to_image_preprocessor_test.py

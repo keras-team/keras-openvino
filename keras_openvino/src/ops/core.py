@@ -982,11 +982,57 @@ def compute_output_spec(fn, *args, **kwargs):
 
 
 def map(f, xs):
-    def g(_, x):
-        return (), f(x)
+    xs_flat = [get_ov_output(convert_to_tensor(x)) for x in tree.flatten(xs)]
+    if not xs_flat or xs_flat[0].get_partial_shape()[0].is_static:
 
-    _, ys = scan(g, (), xs)
-    return ys
+        def g(_, x):
+            return (), f(x)
+
+        _, ys = scan(g, (), xs)
+        return ys
+
+    # The leading dim is unknown, so loop over it instead of unrolling.
+    boundary_id = ov_opset.constant(0, Type.i32).get_instance_id()
+    params = []
+    for x in xs_flat:
+        x_shape = x.get_partial_shape()
+        x_shape[0] = 1
+        params.append(ov_opset.parameter(x_shape, x.get_element_type()))
+    axis = ov_opset.constant([0], Type.i32).output(0)
+    elems = [
+        OpenVINOKerasTensor(ov_opset.squeeze(p.output(0), axis).output(0))
+        for p in params
+    ]
+    ys = f(tree.pack_sequence_as(xs, elems))
+    results = [ov_opset.constant(True, Type.boolean).output(0)] + [
+        ov_opset.unsqueeze(get_ov_output(y), axis).output(0)
+        for y in tree.flatten(ys)
+    ]
+    results, invariant_inputs = _bind_captured_outputs(
+        results, params, boundary_id
+    )
+    body = Model(
+        results=results,
+        parameters=params + [inner for inner, _ in invariant_inputs],
+    )
+    trip_count = ov_opset.gather(
+        ov_opset.shape_of(xs_flat[0], Type.i32), axis, axis
+    ).output(0)
+    trip_count = ov_opset.squeeze(trip_count, axis).output(0)
+    loop = ov_opset.loop(
+        trip_count, ov_opset.constant(True, Type.boolean).output(0)
+    )
+    loop.set_function(body)
+    loop.set_special_body_ports([-1, 0])
+    for param, x in zip(params, xs_flat):
+        loop.set_sliced_input(param, x, 0, 1, 1, -1, 0)
+    for inner, outer in invariant_inputs:
+        loop.set_invariant_input(inner, outer)
+    outputs = [
+        OpenVINOKerasTensor(loop.get_concatenated_slices(r, 0, 1, 1, -1, 0))
+        for r in results[1:]
+    ]
+    return tree.pack_sequence_as(ys, outputs)
 
 
 def scan(f, init, xs=None, length=None, reverse=False, unroll=1):
@@ -1214,7 +1260,10 @@ def scatter(indices, values, shape):
     values = get_ov_output(values)
 
     # Create a zeros tensor of the target shape.
-    shape = get_ov_output(shape)
+    if isinstance(shape, (list, tuple)):
+        shape = shape_to_ov_output(shape)
+    else:
+        shape = get_ov_output(shape)
     zero_const = ov_opset.constant(0, values.get_element_type())
     zeros = ov_opset.broadcast(zero_const, shape).output(0)
 
