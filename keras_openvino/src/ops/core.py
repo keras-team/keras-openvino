@@ -939,6 +939,14 @@ def cond(pred, true_fn, false_fn):
             super().add_update(update)
             self._var_objects[id(variable)] = variable
 
+    if not isinstance(pred, bool):
+        pred_value = _try_eval_constant(get_ov_output(pred))
+        if pred_value is not None:
+            pred = bool(pred_value)
+    # A known predicate runs only the taken branch, like eager backends.
+    if isinstance(pred, bool):
+        return true_fn() if pred else false_fn()
+
     # Run both branches in isolated scopes so variable assignments are
     # captured but not applied eagerly (same semantics as torch.cond).
     true_scope = _TrackingScope()
@@ -949,12 +957,9 @@ def cond(pred, true_fn, false_fn):
     with false_scope:
         false_val = false_fn()
 
-    if isinstance(pred, bool):
-        pred_ov = ov_opset.constant(pred, Type.boolean).output(0)
-    else:
-        pred_ov = get_ov_output(pred)
-        if pred_ov.get_element_type() != Type.boolean:
-            pred_ov = ov_opset.convert(pred_ov, Type.boolean).output(0)
+    pred_ov = get_ov_output(pred)
+    if pred_ov.get_element_type() != Type.boolean:
+        pred_ov = ov_opset.convert(pred_ov, Type.boolean).output(0)
 
     def _select(t, f):
         t_ov, f_ov = align_operand_types(
@@ -969,6 +974,22 @@ def cond(pred, true_fn, false_fn):
     # (defaulting to the pre-cond stored value for the branch that didn't
     # update it).
     all_var_ids = set(true_scope.state_mapping) | set(false_scope.state_mapping)
+
+    def _flat_types(val):
+        vals = val if isinstance(val, (list, tuple)) else [val]
+        if any(v is None or tree.is_nested(v) for v in vals):
+            return None
+        return [get_ov_output(v).get_element_type() for v in vals]
+
+    # Run only the taken branch, like JAX and TensorFlow.
+    use_if = not all_var_ids
+    if use_if:
+        true_types = _flat_types(true_val)
+        use_if = true_types is not None and true_types == _flat_types(false_val)
+    if use_if:
+        index = ov_opset.convert(pred_ov, Type.i32).output(0)
+        return switch(OpenVINOKerasTensor(index), [false_fn, true_fn])
+
     for var_id in all_var_ids:
         if var_id in true_scope._var_objects:
             var = true_scope._var_objects[var_id]
