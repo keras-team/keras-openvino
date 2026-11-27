@@ -22,6 +22,7 @@ keras_hub/src/layers/modeling/token_and_position_embedding_test.py
 keras_hub/src/layers/modeling/transformer_encoder_test.py
 keras_hub/src/layers/modeling/transformer_layer_utils_test.py
 keras_hub/src/layers/preprocessing/audio_converter_test.py
+keras_hub/src/layers/preprocessing/image_converter_test.py
 keras_hub/src/layers/preprocessing/masked_lm_mask_generator_test.py
 keras_hub/src/layers/preprocessing/multi_segment_packer_test.py
 keras_hub/src/layers/preprocessing/random_deletion_test.py
@@ -136,11 +137,7 @@ keras_hub/src/models/embedding_gemma2/embedding_gemma2_lora_test.py
 keras_hub/src/models/embedding_gemma2/embedding_gemma2_text_embedder_preprocessor_test.py
 keras_hub/src/models/embedding_gemma2/embedding_gemma2_tokenizer_test.py
 keras_hub/src/models/embedding_gemma2/embedding_gemma2_video_converter_test.py
-keras_hub/src/models/esm/esm_classifier_preprocessor_test.py
-keras_hub/src/models/esm/esm_classifier_test.py
-keras_hub/src/models/esm/esm_masked_plm_preprocessor_test.py
-keras_hub/src/models/esm/esm_masked_plm_test.py
-keras_hub/src/models/esm/esm_tokenizer_test.py
+keras_hub/src/models/esm
 keras_hub/src/models/f_net
 keras_hub/src/models/falcon
 keras_hub/src/models/flux
@@ -216,7 +213,7 @@ keras_hub/src/models/qwen3_5_moe/qwen3_5_moe_backbone_test.py
 keras_hub/src/models/qwen3_5_moe/qwen3_5_moe_causal_lm_preprocessor_test.py
 keras_hub/src/models/qwen3_moe
 keras_hub/src/models/qwen_moe
-keras_hub/src/models/resnet/resnet_image_classifier_test.py
+keras_hub/src/models/resnet
 keras_hub/src/models/retinanet
 keras_hub/src/models/roberta
 keras_hub/src/models/roformer_v2/roformer_v2_masked_lm_preprocessor_test.py
