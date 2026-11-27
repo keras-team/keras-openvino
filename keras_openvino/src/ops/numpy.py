@@ -1,4 +1,3 @@
-import builtins
 import math
 
 import ml_dtypes
@@ -2708,21 +2707,14 @@ def linspace(
     stop = get_ov_output(stop)
 
     if hasattr(num, "output") or isinstance(num, OpenVINOKerasTensor):
-        num_tensor = get_ov_output(num)
-        try:
-            if num_tensor.get_node().get_type_name() == "Constant":
-                num_value = num_tensor.get_node().get_vector()[0]
-                num = int(num_value)
-            else:
-                raise NotImplementedError(
-                    "Dynamic num values not fully supported"
-                )
-        except Exception as e:
-            raise NotImplementedError(
-                "Could not extract num value from tensor"
-            ) from e
+        num = get_ov_output(num)
+        if num.get_element_type() != Type.i32:
+            num = ov_opset.convert(num, Type.i32).output(0)
     else:
         num = int(num)
+        if num < 0:
+            raise ValueError("Number of samples, `num`, must be non-negative.")
+        num = ov_opset.constant(num, Type.i32).output(0)
 
     if dtype is None:
         output_type = OPENVINO_DTYPES[config.floatx()]
@@ -2732,30 +2724,27 @@ def linspace(
     start = ov_opset.convert(start, output_type).output(0)
     stop = ov_opset.convert(stop, output_type).output(0)
 
-    if num < 0:
-        raise ValueError("Number of samples, `num`, must be non-negative.")
-
     zero_i32 = ov_opset.constant(0, Type.i32).output(0)
     one_i32 = ov_opset.constant(1, Type.i32).output(0)
     one_i32_array = ov_opset.constant([1], Type.i32).output(0)
 
     # Like NumPy, the step is NaN when there is no interval to divide.
-    div = num - 1 if endpoint else num
+    div = ov_opset.subtract(num, one_i32).output(0) if endpoint else num
     delta = ov_opset.subtract(stop, start).output(0)
-    divisor = ov_opset.constant(builtins.max(div, 1), output_type).output(0)
-    step = ov_opset.divide(delta, divisor).output(0)
-    returned_step = step
-    if div <= 0:
-        nan = ov_opset.constant(np.array(np.nan, dtype=np.float32)).output(0)
-        nan = ov_opset.convert(nan, output_type).output(0)
-        returned_step = ov_opset.multiply(delta, nan).output(0)
-
-    indices = ov_opset.range(
-        zero_i32,
-        ov_opset.constant(num, Type.i32).output(0),
-        one_i32,
-        output_type,
+    divisor = ov_opset.convert(
+        ov_opset.maximum(div, one_i32), output_type
     ).output(0)
+    step = ov_opset.divide(delta, divisor).output(0)
+    nan = ov_opset.constant(np.array(np.nan, dtype=np.float32)).output(0)
+    nan = ov_opset.convert(nan, output_type).output(0)
+    returned_step = ov_opset.select(
+        ov_opset.less_equal(div, zero_i32),
+        ov_opset.multiply(delta, nan),
+        step,
+    ).output(0)
+
+    positions = ov_opset.range(zero_i32, num, one_i32, Type.i32).output(0)
+    indices = ov_opset.range(zero_i32, num, one_i32, output_type).output(0)
 
     start_shape = ov_opset.convert(
         ov_opset.shape_of(start).output(0), Type.i32
@@ -2794,9 +2783,12 @@ def linspace(
         0
     )
     result = ov_opset.add(start_reshaped, scaled_indices).output(0)
-    if endpoint and num > 1:
+    if endpoint:
         # Like NumPy, the last sample is exactly `stop`.
-        is_last = ov_opset.constant(np.arange(num) == num - 1).output(0)
+        is_last = ov_opset.logical_and(
+            ov_opset.equal(positions, ov_opset.subtract(num, one_i32)),
+            ov_opset.greater(num, one_i32),
+        ).output(0)
         is_last = ov_opset.reshape(is_last, indices_target_shape, False)
         stop_reshaped = ov_opset.reshape(stop, start_target_shape, False)
         result = ov_opset.select(is_last, stop_reshaped, result).output(0)
