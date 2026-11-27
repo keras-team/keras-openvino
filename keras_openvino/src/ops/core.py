@@ -36,6 +36,14 @@ def device_scope(device_name):
     yield
 
 
+def _is_bool_mask(index):
+    if isinstance(index, np.ndarray):
+        return index.dtype == np.bool_
+    if isinstance(index, OpenVINOKerasTensor):
+        return index.output.get_element_type() == ov.Type.boolean
+    return False
+
+
 # wrapper for OpenVINO symbolic tensor ov.Output
 # that provides interface similar to KerasTensor
 # with dtype and shape members
@@ -253,8 +261,23 @@ class OpenVINOKerasTensor:
         slice_axes, slice_starts, slice_ends, slice_steps = [], [], [], []
         unsqueeze_axes = []
 
+        if isinstance(indices, list) and any(
+            i is None or i is Ellipsis or isinstance(i, builtins.slice)
+            for i in indices
+        ):
+            indices = tuple(indices)
         if not isinstance(indices, tuple):
             indices = (indices,)
+
+        if len(indices) == 1 and _is_bool_mask(indices[0]):
+            mask = get_ov_output(indices[0])
+            positions = ov_opset.non_zero(mask, ov.Type.i32).output(0)
+            positions = ov_opset.transpose(
+                positions, ov_opset.constant([1, 0], ov.Type.i32)
+            ).output(0)
+            return OpenVINOKerasTensor(
+                ov_opset.gather_nd(data, positions).output(0)
+            )
 
         if any(i is Ellipsis for i in indices):
             ellipsis_pos = indices.index(Ellipsis)
