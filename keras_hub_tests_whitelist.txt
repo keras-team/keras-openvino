@@ -201,12 +201,7 @@ keras_hub/src/models/parseq
 keras_hub/src/models/phi3
 keras_hub/src/models/preprocessor_test.py
 keras_hub/src/models/qwen
-keras_hub/src/models/qwen2_vl/qwen2_vl_backbone_test.py
-keras_hub/src/models/qwen2_vl/qwen2_vl_causal_lm_test.py
-keras_hub/src/models/qwen2_vl/qwen2_vl_image_converter_test.py
-keras_hub/src/models/qwen2_vl/qwen2_vl_tokenizer_test.py
-keras_hub/src/models/qwen2_vl/qwen2_vl_video_converter_test.py
-keras_hub/src/models/qwen2_vl/qwen2_vl_vision_encoder_test.py
+keras_hub/src/models/qwen2_vl
 keras_hub/src/models/qwen3
 keras_hub/src/models/qwen3_5/qwen3_5_backbone_test.py
 keras_hub/src/models/qwen3_5/qwen3_5_causal_lm_preprocessor_test.py

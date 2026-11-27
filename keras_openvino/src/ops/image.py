@@ -41,16 +41,16 @@ SCALE_AND_TRANSLATE_METHODS = {
 RESIZE_INTERPOLATIONS = {
     "bilinear": "linear",
     "nearest": "nearest",
-    "bicubic": "cubic",
 }
-# Lanczos methods are handled via _ov_scale_and_translate
-# instead of ov_opset.interpolate, which does not support them natively.
-LANCZOS_INTERPOLATIONS = {
+# Handled via _ov_scale_and_translate, as ov_opset.interpolate has no lanczos
+# and clamps bicubic taps at the edges instead of renormalizing.
+KERNEL_INTERPOLATIONS = {
+    "bicubic": "cubic",
     "lanczos3": "lanczos3",
     "lanczos5": "lanczos5",
 }
 ALL_RESIZE_INTERPOLATIONS = tuple(RESIZE_INTERPOLATIONS) + tuple(
-    LANCZOS_INTERPOLATIONS
+    KERNEL_INTERPOLATIONS
 )
 
 
@@ -432,9 +432,7 @@ def resize(
             fill_value,
         ).output(0)
 
-    if interpolation in LANCZOS_INTERPOLATIONS:
-        # routed through the weight-matrix resampler used by
-        # scale_and_translate, which has lanczos kernel support.
+    if interpolation in KERNEL_INTERPOLATIONS:
         post_crop_shape = ov_opset.shape_of(images, Type.i32).output(0)
         src_h = ov_opset.convert(
             _gather_dim(post_crop_shape, height_axis_index), Type.f32
@@ -457,7 +455,7 @@ def resize(
             width_axis_index: target_width,
         }
         spatial_dims = [height_axis_index, width_axis_index]
-        kernel = _ov_kernels[LANCZOS_INTERPOLATIONS[interpolation]]
+        kernel = _ov_kernels[KERNEL_INTERPOLATIONS[interpolation]]
         return _ov_scale_and_translate(
             images,
             output_shape_map,
@@ -483,12 +481,9 @@ def resize(
         Type.i64,
     }
     should_round_before_cast = False
-    should_adjust_uint8_bicubic = False
     if original_type == Type.u8 and interpolation != "nearest":
         images = ov_opset.convert(images, Type.f32).output(0)
         should_round_before_cast = True
-        if interpolation == "bicubic":
-            should_adjust_uint8_bicubic = True
     elif original_type not in supported_types:
         images = ov_opset.convert(images, Type.f32).output(0)
 
@@ -503,9 +498,6 @@ def resize(
             "tf_half_pixel_for_nn"
         )
         interpolate_kwargs["nearest_mode"] = "simple"
-    elif interpolation == "bicubic":
-        interpolate_kwargs["coordinate_transformation_mode"] = "half_pixel"
-        interpolate_kwargs["cube_coeff"] = -0.5
     else:
         interpolate_kwargs["coordinate_transformation_mode"] = "half_pixel"
 
@@ -513,27 +505,6 @@ def resize(
 
     if should_round_before_cast:
         resized = ov_opset.round(resized, "half_to_even").output(0)
-        if should_adjust_uint8_bicubic:
-            # Match TensorFlow/OpenCV-style uint8 bicubic behavior more closely
-            # by nudging non-extreme values toward mid-range before clamping.
-            low_mask = ov_opset.logical_and(
-                ov_opset.greater(resized, ov_opset.constant(0.0, Type.f32)),
-                ov_opset.less(resized, ov_opset.constant(128.0, Type.f32)),
-            ).output(0)
-            high_mask = ov_opset.logical_and(
-                ov_opset.greater_equal(
-                    resized, ov_opset.constant(128.0, Type.f32)
-                ),
-                ov_opset.less(resized, ov_opset.constant(255.0, Type.f32)),
-            ).output(0)
-            plus_one = ov_opset.add(
-                resized,
-                ov_opset.convert(low_mask, Type.f32),
-            ).output(0)
-            resized = ov_opset.subtract(
-                plus_one,
-                ov_opset.convert(high_mask, Type.f32),
-            ).output(0)
         resized = ov_opset.clamp(resized, 0.0, 255.0).output(0)
     if resized.get_element_type() != original_type:
         resized = ov_opset.convert(resized, original_type).output(0)
