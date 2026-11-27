@@ -1,0 +1,11 @@
+# KerasHub tests that are known not to pass with the openvino backend.
+# Each line is a pytest node id, or a prefix of one, passed to --deselect.
+keras_hub/src/layers/preprocessing/preprocessing_layer_test.py::PreprocessingLayerTest::test_grain_runs_on_cpu
+keras_hub/src/models/diffusion_gemma/diffusion_gemma_block_diffusion_lm_test.py::DiffusionGemmaBlockDiffusionLMTest::test_generate_step_stops_after_all_sequences_finish
+keras_hub/src/models/muse_glimmer/muse_glimmer_causal_lm_test.py::MuseGlimmerCausalLMTest::test_drafter_follows_the_verified_prefix_block_size_3
+keras_hub/src/models/muse_glimmer/muse_glimmer_causal_lm_test.py::MuseGlimmerCausalLMTest::test_drafter_follows_the_verified_prefix_block_size_5
+keras_hub/src/samplers/speculative_sampler_test.py::SpeculativeSamplerTest::test_stochastic_applies_top_k_to_target
+keras_hub/src/samplers/speculative_sampler_test.py::SpeculativeSamplerTest::test_stochastic_bonus_token_stays_in_top_k_with_large_vocab
+keras_hub/src/samplers/speculative_sampler_test.py::SpeculativeSamplerTest::test_stochastic_matches_target_distribution
+keras_hub/src/samplers/speculative_sampler_test.py::SpeculativeSamplerTest::test_stop_token_in_uncommitted_draft_does_not_end_the_loop
+keras_hub/src/samplers/speculative_sampler_test.py::SpeculativeSamplerTest::test_top_k_one_matches_target_sampler

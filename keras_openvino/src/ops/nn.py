@@ -1149,6 +1149,11 @@ def psnr(x1, x2, max_val):
     return OpenVINOKerasTensor(psnr)
 
 
+def _get_large_negative(ov_type):
+    val = 65500.0 if ov_type == Type.f16 else 3.38953e38
+    return ov_opset.constant(val * -0.7, ov_type).output(0)
+
+
 def dot_product_attention(
     query,
     key,
@@ -1179,29 +1184,20 @@ def dot_product_attention(
     query = ov_opset.transpose(query, axes_const)
     key = ov_opset.transpose(key, axes_const)
     value = ov_opset.transpose(value, axes_const)
+    ov_type = query.get_element_type()
+    large_neg = _get_large_negative(ov_type)
+    zero = ov_opset.constant(0.0, ov_type).output(0)
     mask = get_ov_output(mask) if mask is not None else None
     if bias is not None:
         bias = get_ov_output(bias)
-        if bias.get_element_type() != query.get_element_type():
-            bias = ov_opset.convert(bias, query.get_element_type()).output(0)
-        if mask is not None:
-            if mask.get_element_type() == Type.boolean:
-                query_dtype = ov_to_keras_type(query.get_element_type())
-                min_val = (
-                    np.finfo(np.float16).min
-                    if query_dtype == "float16"
-                    else np.finfo(np.float32).min
-                )
-                large_neg = ov_opset.constant(
-                    min_val, query.get_element_type()
-                ).output(0)
-                zero = ov_opset.constant(0.0, query.get_element_type()).output(
-                    0
-                )
-                mask = ov_opset.select(mask, zero, large_neg).output(0)
-            mask = ov_opset.add(mask, bias).output(0)
-        else:
-            mask = bias
+        if bias.get_element_type() != ov_type:
+            bias = ov_opset.convert(bias, ov_type).output(0)
+    if mask is not None and mask.get_element_type() == Type.boolean:
+        # SDPA treats False as -inf, giving NaN for fully masked rows.
+        keep = bias if bias is not None else zero
+        mask = ov_opset.select(mask, keep, large_neg).output(0)
+    elif bias is not None:
+        mask = bias if mask is None else ov_opset.add(mask, bias).output(0)
     if is_causal and mask is not None:
         # OpenVINO's SDPA ignores `attention_mask` when `causal=True`, so a
         # caller-provided mask would otherwise silently drop the causal
@@ -1237,22 +1233,7 @@ def dot_product_attention(
             ov_opset.constant([0], Type.i32).output(0),
         ).output(0)
         causal_keep = ov_opset.less_equal(cols, rows).output(0)
-        if mask.get_element_type() == Type.boolean:
-            false_const = ov_opset.constant(False, Type.boolean).output(0)
-            mask = ov_opset.select(causal_keep, mask, false_const).output(0)
-        else:
-            query_dtype = ov_to_keras_type(query.get_element_type())
-            min_val = (
-                np.finfo(np.float16).min
-                if query_dtype == "float16"
-                else np.finfo(np.float32).min
-            )
-            large_neg = ov_opset.constant(
-                min_val, query.get_element_type()
-            ).output(0)
-            zero = ov_opset.constant(0.0, query.get_element_type()).output(0)
-            causal_add = ov_opset.select(causal_keep, zero, large_neg).output(0)
-            mask = ov_opset.add(mask, causal_add).output(0)
+        mask = ov_opset.select(causal_keep, mask, large_neg).output(0)
         is_causal = False
     scale = (
         get_ov_output(scale, query.get_element_type())

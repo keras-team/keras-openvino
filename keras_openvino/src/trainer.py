@@ -1,3 +1,4 @@
+import ml_dtypes
 import numpy as np
 import openvino as ov
 import openvino.opset16 as ov_opset
@@ -18,6 +19,27 @@ from keras_openvino.src.utils import OPENVINO_DTYPES
 from keras_openvino.src.utils import get_device
 
 
+def _fix_random_draws(model):
+    # RandomUniform draws new values on every inference, so evaluate the
+    # draws that don't depend on model inputs once.
+    model = model.clone()
+    depends, draws = set(), []
+    for node in model.get_ordered_ops():
+        if node.get_type_name() == "Parameter" or any(
+            i.get_source_output().get_node().get_instance_id() in depends
+            for i in node.inputs()
+        ):
+            depends.add(node.get_instance_id())
+        elif node.get_type_name() == "RandomUniform":
+            draws.append(node)
+    if draws:
+        outputs = [node.output(0) for node in draws]
+        values = ov.compile_model(ov.Model(outputs, []), get_device())({})
+        for node, value in zip(draws, values.to_tuple()):
+            node.output(0).replace(ov_opset.constant(value).output(0))
+    return model
+
+
 class Trainer(BaseTrainer):
     def __init__(self):
         super().__init__()
@@ -33,8 +55,15 @@ class Trainer(BaseTrainer):
             return x[0]
         return x
 
-    def _unpack_inference_outputs(self, all_outputs):
+    def _unpack_inference_outputs(self, ov_result):
         """Split raw inference outputs into main outputs and apply masks."""
+        # NumPy has no bf16, so OpenVINO returns its bytes as float16.
+        all_outputs = [
+            v.view(ml_dtypes.bfloat16)
+            if k.get_element_type() == ov.Type.bf16
+            else v
+            for k, v in ov_result.items()
+        ]
         main_outputs = all_outputs[: self._n_main_outputs]
         y_pred = self._unpack_singleton(
             tree.pack_sequence_as(self.struct_outputs, main_outputs)
@@ -57,7 +86,7 @@ class Trainer(BaseTrainer):
             ov_compiled_model = self._get_compiled_model(x)
             flatten_x = tree.flatten(x)
             ov_result = ov_compiled_model(flatten_x)
-            y_pred = self._unpack_inference_outputs(ov_result.to_tuple())
+            y_pred = self._unpack_inference_outputs(ov_result)
         loss = self._compute_loss(
             x=x, y=y, y_pred=y_pred, sample_weight=sample_weight, training=False
         )
@@ -78,7 +107,7 @@ class Trainer(BaseTrainer):
         ov_compiled_model = self._get_compiled_model(x)
         flatten_x = tree.flatten(x)
         ov_result = ov_compiled_model(flatten_x)
-        return self._unpack_inference_outputs(ov_result.to_tuple())
+        return self._unpack_inference_outputs(ov_result)
 
     def make_test_function(self, force=False):
         if self.test_function is not None and not force:
@@ -180,7 +209,9 @@ class Trainer(BaseTrainer):
                 results.append(ov_opset.result(mask.output))
 
         # prepare compiled model from scratch
-        ov_model = ov.Model(results=results, parameters=parameters)
+        ov_model = _fix_random_draws(
+            ov.Model(results=results, parameters=parameters)
+        )
         self.ov_compiled_model = ov.compile_model(ov_model, get_device())
         self.ov_device = get_device()
         self.ov_input_shapes = current_shapes

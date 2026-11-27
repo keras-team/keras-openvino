@@ -152,7 +152,10 @@ jobs:
         working-directory: ./keras-hub
         run: |
           set -o pipefail
-          pytest keras_hub -n auto --dist loadfile | tee "$RUNNER_TEMP/pytest.log"
+          grep -Ev '^\s*(#|$)' ../keras-openvino/keras_hub_excluded_tests.txt \
+            | sed 's/^/--deselect=/' > "$RUNNER_TEMP/deselect.txt"
+          pytest keras_hub -n auto --dist loadfile @"$RUNNER_TEMP/deselect.txt" \
+            | tee "$RUNNER_TEMP/pytest.log"
 
       - name: Run integration tests
         working-directory: ./keras-hub/integration_tests

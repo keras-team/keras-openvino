@@ -11,7 +11,7 @@ from keras_openvino.src.utils import OPENVINO_DTYPES
 class Variable(KerasVariable):
     def _initialize(self, value):
         if isinstance(value, OpenVINOKerasTensor):
-            self._value = value
+            self._value = convert_to_tensor(value, dtype=self._dtype)
         elif isinstance(value, ov.Tensor):
             value_const = ov_opset.constant(
                 value.data, dtype=OPENVINO_DTYPES[self._dtype]

@@ -1,4 +1,3 @@
-import builtins
 import math
 
 import ml_dtypes
@@ -16,8 +15,10 @@ from keras.src.backend.common.backend_utils import normalize_shift_and_axis
 from keras_openvino.src.ops.core import OpenVINOKerasTensor
 from keras_openvino.src.ops.core import convert_to_tensor
 from keras_openvino.src.ops.core import get_ov_output
+from keras_openvino.src.ops.core import make_constant
 from keras_openvino.src.ops.core import shape
 from keras_openvino.src.ops.core import shape_to_ov_output
+from keras_openvino.src.ops.core import true_divide_output
 from keras_openvino.src.ops.core import while_loop
 from keras_openvino.src.utils import DTYPES_MAX
 from keras_openvino.src.utils import DTYPES_MIN
@@ -375,9 +376,10 @@ def arange(start, stop=None, step=None, dtype=None):
             else result_type(type(_start), type(_stop), type(_step), "int32")
         )
         return OpenVINOKerasTensor(
-            ov_opset.constant(
-                np.arange(_start, _stop, _step, dtype=keras_dtype)
-            ).output(0)
+            make_constant(
+                np.arange(_start, _stop, _step, dtype=keras_dtype),
+                OPENVINO_DTYPES[keras_dtype],
+            )
         )
 
     if stop is None:
@@ -1295,8 +1297,10 @@ def clip(x, x_min, x_max):
     x_type = x.get_element_type()
     if x_type == Type.boolean:
         x = ov_opset.convert(x, Type.i32).output(0)
-    x_min = get_ov_output(x_min, x.get_element_type())
-    x_max = get_ov_output(x_max, x.get_element_type())
+    # Keep the dtype of `x`, like Keras's output spec.
+    x_type = x.get_element_type()
+    x_min = ov_opset.convert(get_ov_output(x_min, x_type), x_type).output(0)
+    x_max = ov_opset.convert(get_ov_output(x_max, x_type), x_type).output(0)
     clip_by_min = ov_opset.maximum(x, x_min).output(0)
     clip_by_max = ov_opset.minimum(clip_by_min, x_max).output(0)
     return OpenVINOKerasTensor(clip_by_max)
@@ -2708,21 +2712,14 @@ def linspace(
     stop = get_ov_output(stop)
 
     if hasattr(num, "output") or isinstance(num, OpenVINOKerasTensor):
-        num_tensor = get_ov_output(num)
-        try:
-            if num_tensor.get_node().get_type_name() == "Constant":
-                num_value = num_tensor.get_node().get_vector()[0]
-                num = int(num_value)
-            else:
-                raise NotImplementedError(
-                    "Dynamic num values not fully supported"
-                )
-        except Exception as e:
-            raise NotImplementedError(
-                "Could not extract num value from tensor"
-            ) from e
+        num = get_ov_output(num)
+        if num.get_element_type() != Type.i32:
+            num = ov_opset.convert(num, Type.i32).output(0)
     else:
         num = int(num)
+        if num < 0:
+            raise ValueError("Number of samples, `num`, must be non-negative.")
+        num = ov_opset.constant(num, Type.i32).output(0)
 
     if dtype is None:
         output_type = OPENVINO_DTYPES[config.floatx()]
@@ -2732,30 +2729,27 @@ def linspace(
     start = ov_opset.convert(start, output_type).output(0)
     stop = ov_opset.convert(stop, output_type).output(0)
 
-    if num < 0:
-        raise ValueError("Number of samples, `num`, must be non-negative.")
-
     zero_i32 = ov_opset.constant(0, Type.i32).output(0)
     one_i32 = ov_opset.constant(1, Type.i32).output(0)
     one_i32_array = ov_opset.constant([1], Type.i32).output(0)
 
     # Like NumPy, the step is NaN when there is no interval to divide.
-    div = num - 1 if endpoint else num
+    div = ov_opset.subtract(num, one_i32).output(0) if endpoint else num
     delta = ov_opset.subtract(stop, start).output(0)
-    divisor = ov_opset.constant(builtins.max(div, 1), output_type).output(0)
-    step = ov_opset.divide(delta, divisor).output(0)
-    returned_step = step
-    if div <= 0:
-        nan = ov_opset.constant(np.array(np.nan, dtype=np.float32)).output(0)
-        nan = ov_opset.convert(nan, output_type).output(0)
-        returned_step = ov_opset.multiply(delta, nan).output(0)
-
-    indices = ov_opset.range(
-        zero_i32,
-        ov_opset.constant(num, Type.i32).output(0),
-        one_i32,
-        output_type,
+    divisor = ov_opset.convert(
+        ov_opset.maximum(div, one_i32), output_type
     ).output(0)
+    step = ov_opset.divide(delta, divisor).output(0)
+    nan = ov_opset.constant(np.array(np.nan, dtype=np.float32)).output(0)
+    nan = ov_opset.convert(nan, output_type).output(0)
+    returned_step = ov_opset.select(
+        ov_opset.less_equal(div, zero_i32),
+        ov_opset.multiply(delta, nan),
+        step,
+    ).output(0)
+
+    positions = ov_opset.range(zero_i32, num, one_i32, Type.i32).output(0)
+    indices = ov_opset.range(zero_i32, num, one_i32, output_type).output(0)
 
     start_shape = ov_opset.convert(
         ov_opset.shape_of(start).output(0), Type.i32
@@ -2794,9 +2788,12 @@ def linspace(
         0
     )
     result = ov_opset.add(start_reshaped, scaled_indices).output(0)
-    if endpoint and num > 1:
+    if endpoint:
         # Like NumPy, the last sample is exactly `stop`.
-        is_last = ov_opset.constant(np.arange(num) == num - 1).output(0)
+        is_last = ov_opset.logical_and(
+            ov_opset.equal(positions, ov_opset.subtract(num, one_i32)),
+            ov_opset.greater(num, one_i32),
+        ).output(0)
         is_last = ov_opset.reshape(is_last, indices_target_shape, False)
         stop_reshaped = ov_opset.reshape(stop, start_target_shape, False)
         result = ov_opset.select(is_last, stop_reshaped, result).output(0)
@@ -3923,9 +3920,7 @@ def pad(x, pad_width, mode="constant", constant_values=None):
                 "in constant mode with the openvino backend. "
                 f"Received: constant_values={constant_values}"
             )
-        pad_value = ov_opset.constant(
-            constant_values, x.get_element_type()
-        ).output(0)
+        pad_value = make_constant(constant_values, x.get_element_type())
 
     if len(pad_width) == 1:
         # A single `(before, after)` pair broadcasts to every axis, matching
@@ -4982,7 +4977,7 @@ def divide(x1, x2):
     output_dtype = OPENVINO_DTYPES[output_dtype]
     x1 = ov_opset.convert(x1, output_dtype).output(0)
     x2 = ov_opset.convert(x2, output_dtype).output(0)
-    return OpenVINOKerasTensor(ov_opset.divide(x1, x2).output(0))
+    return OpenVINOKerasTensor(true_divide_output(x1, x2))
 
 
 def divide_no_nan(x1, x2):
