@@ -18,6 +18,7 @@ from keras_openvino.src.ops.core import convert_to_tensor
 from keras_openvino.src.ops.core import get_ov_output
 from keras_openvino.src.ops.core import shape
 from keras_openvino.src.ops.core import shape_to_ov_output
+from keras_openvino.src.ops.core import true_divide_output
 from keras_openvino.src.ops.core import while_loop
 from keras_openvino.src.utils import DTYPES_MAX
 from keras_openvino.src.utils import DTYPES_MIN
@@ -4982,7 +4983,7 @@ def divide(x1, x2):
     output_dtype = OPENVINO_DTYPES[output_dtype]
     x1 = ov_opset.convert(x1, output_dtype).output(0)
     x2 = ov_opset.convert(x2, output_dtype).output(0)
-    return OpenVINOKerasTensor(ov_opset.divide(x1, x2).output(0))
+    return OpenVINOKerasTensor(true_divide_output(x1, x2))
 
 
 def divide_no_nan(x1, x2):

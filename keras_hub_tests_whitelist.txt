@@ -110,8 +110,7 @@ keras_hub/src/models/blip2/blip2_vision_encoder_test.py
 keras_hub/src/models/block_diffusion_lm_preprocessor_test.py
 keras_hub/src/models/bloom
 keras_hub/src/models/causal_lm_preprocessor_test.py
-keras_hub/src/models/clip/clip_preprocessor_test.py
-keras_hub/src/models/clip/clip_tokenizer_test.py
+keras_hub/src/models/clip
 keras_hub/src/models/cspnet
 keras_hub/src/models/deberta_v3
 keras_hub/src/models/deeplab_v3
@@ -165,8 +164,7 @@ keras_hub/src/models/hgnetv2
 keras_hub/src/models/llama
 keras_hub/src/models/llama3
 keras_hub/src/models/masked_lm_preprocessor_test.py
-keras_hub/src/models/metaclip_2/metaclip_2_preprocessor_test.py
-keras_hub/src/models/metaclip_2/metaclip_2_tokenizer_test.py
+keras_hub/src/models/metaclip_2
 keras_hub/src/models/mistral
 keras_hub/src/models/mistral3
 keras_hub/src/models/mit
