@@ -18,6 +18,27 @@ from keras_openvino.src.utils import OPENVINO_DTYPES
 from keras_openvino.src.utils import get_device
 
 
+def _fix_random_draws(model):
+    # RandomUniform draws new values on every inference, so evaluate the
+    # draws that don't depend on model inputs once.
+    model = model.clone()
+    depends, draws = set(), []
+    for node in model.get_ordered_ops():
+        if node.get_type_name() == "Parameter" or any(
+            i.get_source_output().get_node().get_instance_id() in depends
+            for i in node.inputs()
+        ):
+            depends.add(node.get_instance_id())
+        elif node.get_type_name() == "RandomUniform":
+            draws.append(node)
+    if draws:
+        outputs = [node.output(0) for node in draws]
+        values = ov.compile_model(ov.Model(outputs, []), get_device())({})
+        for node, value in zip(draws, values.to_tuple()):
+            node.output(0).replace(ov_opset.constant(value).output(0))
+    return model
+
+
 class Trainer(BaseTrainer):
     def __init__(self):
         super().__init__()
@@ -180,7 +201,9 @@ class Trainer(BaseTrainer):
                 results.append(ov_opset.result(mask.output))
 
         # prepare compiled model from scratch
-        ov_model = ov.Model(results=results, parameters=parameters)
+        ov_model = _fix_random_draws(
+            ov.Model(results=results, parameters=parameters)
+        )
         self.ov_compiled_model = ov.compile_model(ov_model, get_device())
         self.ov_device = get_device()
         self.ov_input_shapes = current_shapes
