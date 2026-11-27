@@ -1436,6 +1436,7 @@ def switch(index, branches, *operands):
     operands_ov = [get_ov_output(op_val) for op_val in operands]
 
     def _trace_branch(branch_fn):
+        boundary_id = ov_opset.constant(0, Type.i32).get_instance_id()
         params, wrapped = [], []
         for ov_out in operands_ov:
             p = ov_opset.parameter(
@@ -1450,13 +1451,20 @@ def switch(index, branches, *operands):
             flat = [get_ov_output(o) for o in raw]
         else:
             flat = [get_ov_output(raw)]
-        return params, Model(flat, params), raw
+        flat, captured = _bind_captured_outputs(flat, params, boundary_id)
+        body = Model(flat, params + [inner for inner, _ in captured])
+        return params, captured, body, raw
 
     def _build(branch_idx):
         inner_outputs = None
-        then_params, then_body, then_raw = _trace_branch(branches[branch_idx])
+        then_params, then_captured, then_body, then_raw = _trace_branch(
+            branches[branch_idx]
+        )
+        else_captured = []
         if branch_idx == n - 2:
-            else_params, else_body, _ = _trace_branch(branches[branch_idx + 1])
+            else_params, else_captured, else_body, _ = _trace_branch(
+                branches[branch_idx + 1]
+            )
         else:
             inner_outputs, _ = _build(branch_idx + 1)
             else_params, pt_results = [], []
@@ -1485,6 +1493,10 @@ def switch(index, branches, *operands):
                 if_node.set_input(ov_inp, tp, None)
             for inner_out, ep in zip(inner_outputs, else_params):
                 if_node.set_input(inner_out, None, ep)
+        for inner, outer in then_captured:
+            if_node.set_input(outer, inner, None)
+        for inner, outer in else_captured:
+            if_node.set_input(outer, None, inner)
 
         outputs = [
             if_node.set_output(then_body.results[i], else_body.results[i])
