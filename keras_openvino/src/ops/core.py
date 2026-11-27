@@ -647,9 +647,9 @@ def get_ov_output(x, ov_type=None, context_dtype=None):
         if ov_type is None:
             ov_type = Type.i32
         x = make_constant(x, ov_type)
-    elif isinstance(x, np.ndarray):
+    elif isinstance(x, (np.ndarray, np.generic)):
         if x.dtype == "bfloat16":
-            x = ov_opset.constant(x, OPENVINO_DTYPES["bfloat16"]).output(0)
+            x = make_constant(x, Type.bf16)
         else:
             x = ov_opset.constant(x).output(0)
     elif isinstance(x, (list, tuple)):
