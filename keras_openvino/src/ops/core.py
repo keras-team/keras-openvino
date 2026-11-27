@@ -260,6 +260,11 @@ class OpenVINOKerasTensor:
         slice_axes, slice_starts, slice_ends, slice_steps = [], [], [], []
         unsqueeze_axes = []
 
+        if isinstance(indices, list) and any(
+            i is None or i is Ellipsis or isinstance(i, builtins.slice)
+            for i in indices
+        ):
+            indices = tuple(indices)
         if not isinstance(indices, tuple):
             indices = (indices,)
 

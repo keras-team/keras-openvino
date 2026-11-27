@@ -215,7 +215,9 @@ keras_hub/src/models/resnet/resnet_image_classifier_test.py
 keras_hub/src/models/retinanet
 keras_hub/src/models/roberta
 keras_hub/src/models/roformer_v2/roformer_v2_masked_lm_preprocessor_test.py
+keras_hub/src/models/roformer_v2/roformer_v2_masked_lm_test.py
 keras_hub/src/models/roformer_v2/roformer_v2_text_classifier_preprocessor_test.py
+keras_hub/src/models/roformer_v2/roformer_v2_text_classifier_test.py
 keras_hub/src/models/roformer_v2/roformer_v2_tokenizer_test.py
 keras_hub/src/models/rqvae
 keras_hub/src/models/rwkv7/rwkv7_causal_lm_preprocessor_test.py
