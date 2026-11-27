@@ -1,3 +1,4 @@
+import ml_dtypes
 import numpy as np
 import openvino as ov
 import openvino.opset16 as ov_opset
@@ -33,8 +34,15 @@ class Trainer(BaseTrainer):
             return x[0]
         return x
 
-    def _unpack_inference_outputs(self, all_outputs):
+    def _unpack_inference_outputs(self, ov_result):
         """Split raw inference outputs into main outputs and apply masks."""
+        # NumPy has no bf16, so OpenVINO returns its bytes as float16.
+        all_outputs = [
+            v.view(ml_dtypes.bfloat16)
+            if k.get_element_type() == ov.Type.bf16
+            else v
+            for k, v in ov_result.items()
+        ]
         main_outputs = all_outputs[: self._n_main_outputs]
         y_pred = self._unpack_singleton(
             tree.pack_sequence_as(self.struct_outputs, main_outputs)
@@ -57,7 +65,7 @@ class Trainer(BaseTrainer):
             ov_compiled_model = self._get_compiled_model(x)
             flatten_x = tree.flatten(x)
             ov_result = ov_compiled_model(flatten_x)
-            y_pred = self._unpack_inference_outputs(ov_result.to_tuple())
+            y_pred = self._unpack_inference_outputs(ov_result)
         loss = self._compute_loss(
             x=x, y=y, y_pred=y_pred, sample_weight=sample_weight, training=False
         )
@@ -78,7 +86,7 @@ class Trainer(BaseTrainer):
         ov_compiled_model = self._get_compiled_model(x)
         flatten_x = tree.flatten(x)
         ov_result = ov_compiled_model(flatten_x)
-        return self._unpack_inference_outputs(ov_result.to_tuple())
+        return self._unpack_inference_outputs(ov_result)
 
     def make_test_function(self, force=False):
         if self.test_function is not None and not force:
