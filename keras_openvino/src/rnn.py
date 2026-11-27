@@ -1,5 +1,3 @@
-import logging
-
 import numpy as np
 import openvino.opset16 as ov_opset
 from openvino import Model
@@ -8,21 +6,8 @@ from openvino import Type
 from keras.src import tree
 from keras_openvino.src.ops.core import OPENVINO_DTYPES
 from keras_openvino.src.ops.core import OpenVINOKerasTensor
-from keras_openvino.src.ops.core import convert_to_numpy
+from keras_openvino.src.ops.core import _try_eval_constant
 from keras_openvino.src.ops.core import get_ov_output
-
-
-def _try_eval_constant(ov_output):
-    """Try to evaluate ov_output as a numpy array (no upstream Parameters).
-
-    Returns the numpy array on success, or None if the subgraph contains
-    Parameter nodes (i.e. depends on runtime input) or evaluation fails.
-    """
-    try:
-        return convert_to_numpy(OpenVINOKerasTensor(ov_output))
-    except (RuntimeError, ValueError, TypeError) as e:
-        logging.debug("_try_eval_constant: could not evaluate subgraph: %s", e)
-        return None
 
 
 def _ov_const(np_array, dtype):
