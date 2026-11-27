@@ -1683,11 +1683,13 @@ def while_loop(
     loop_var_params = list(params)
     params.extend(inner_param for inner_param, _ in invariant_inputs)
 
+    # The CPU plugin crashes when one result feeds several loop variables.
+    results = [ov_opset.result(x) for x in results]
     body_func = Model(results=results, parameters=params)
     loop.set_function(body_func)
     loop.set_special_body_ports([-1, 0])
 
-    body_outputs = results[1:]
+    body_outputs = [r.output(0) for r in results[1:]]
     for param, init_val, next_val in zip(
         loop_var_params, loop_vars_ov, body_outputs
     ):
