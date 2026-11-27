@@ -10,6 +10,7 @@ keras/src/backend/common/variables_test.py::VariablePropertiesTest::test_standar
 keras/src/backend/common/variables_test.py::VariablePropertiesTest::test_standardize_dtype_uint64
 keras/src/callbacks/remote_monitor_test.py::TerminateOnNaNTest::test_RemoteMonitorWithJsonPayload
 keras/src/layers/preprocessing/image_preprocessing/aug_mix_test.py::AugMixTest::test_random_augment_randomness
+keras/src/layers/preprocessing/image_preprocessing/aug_mix_test.py::AugMixTest::test_seed_reproducibility
 keras/src/layers/preprocessing/stft_spectrogram_test.py::TestSpectrogram::test_spectrogram_error
 keras/src/ops/linalg_test.py::LinalgOpsCorrectnessTest::test_cholesky
 keras/src/ops/linalg_test.py::LinalgOpsCorrectnessTest::test_eigh
