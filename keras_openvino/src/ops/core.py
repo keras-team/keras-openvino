@@ -35,14 +35,6 @@ def device_scope(device_name):
     yield
 
 
-def random_seed_dtype():
-    # OpenVINO arithmetic promotes uint32 * int32 → int32 (Python ints are
-    # i32 in get_ov_output), so the seed tensor from SeedGenerator.next()
-    # ends up as int32. Returning int32 keeps the declared dtype consistent
-    # with what the backend actually produces.
-    return "int32"
-
-
 # wrapper for OpenVINO symbolic tensor ov.Output
 # that provides interface similar to KerasTensor
 # with dtype and shape members
