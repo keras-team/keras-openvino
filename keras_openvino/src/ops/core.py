@@ -822,6 +822,20 @@ def _feed_loop_inputs(model):
     return model, values
 
 
+def _fold_empty_tensors(model):
+    # The CPU plugin can crash on ops with empty tensors, so fold them.
+    model = model.clone()
+    for node in model.get_ordered_ops():
+        if node.get_type_name() in ("Constant", "Parameter", "Result"):
+            continue
+        for out in node.outputs():
+            shape = out.get_partial_shape()
+            if shape.is_static and 0 in shape.to_shape():
+                empty = Tensor(out.get_element_type(), shape.to_shape())
+                out.replace(ov_opset.constant(empty).output(0))
+    return model
+
+
 def convert_to_numpy(x):
     if isinstance(x, np.ndarray):
         return x
@@ -868,7 +882,9 @@ def convert_to_numpy(x):
         if ov_result.get_element_type() == Type.boolean:
             ov_result = ov_opset.convert(ov_result, Type.i32).output(0)
             casted_from_bool = True
-        ov_model = Model(results=[ov_result], parameters=[])
+        ov_model = _fold_empty_tensors(
+            Model(results=[ov_result], parameters=[])
+        )
         ov_model, inputs = _feed_loop_inputs(ov_model)
         ov_compiled_model = compile_model(
             ov_model,
