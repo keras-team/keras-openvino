@@ -35,6 +35,13 @@ def device_scope(device_name):
     yield
 
 
+def true_divide_output(x1, x2):
+    div = ov_opset.divide(x1, x2)
+    # Keep x / c exact instead of x * (1 / c), like other backends.
+    div.get_rt_info()["nonconvertable_divide_0"] = True
+    return div.output(0)
+
+
 # wrapper for OpenVINO symbolic tensor ov.Output
 # that provides interface similar to KerasTensor
 # with dtype and shape members
@@ -127,7 +134,7 @@ class OpenVINOKerasTensor:
         first, other = align_operand_types(
             first, other, "OpenVINOKerasTensor::__truediv__", force_float=True
         )
-        return OpenVINOKerasTensor(ov_opset.divide(first, other).output(0))
+        return OpenVINOKerasTensor(true_divide_output(first, other))
 
     def __rtruediv__(self, other):
         first = self.output
@@ -135,7 +142,7 @@ class OpenVINOKerasTensor:
         first, other = align_operand_types(
             first, other, "OpenVINOKerasTensor::__rtruediv__", force_float=True
         )
-        return OpenVINOKerasTensor(ov_opset.divide(other, first).output(0))
+        return OpenVINOKerasTensor(true_divide_output(other, first))
 
     def __floordiv__(self, other):
         first = self.output
