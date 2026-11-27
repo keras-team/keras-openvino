@@ -1,6 +1,7 @@
 import math
 
 import numpy as np
+import openvino as ov
 import openvino.opset16 as ov_opset
 from openvino import Type
 
@@ -10,8 +11,10 @@ from keras.src.random.seed_generator import draw_seed
 from keras.src.random.seed_generator import make_default_seed  # noqa: F401
 from keras_openvino.src.ops import numpy as ov_numpy
 from keras_openvino.src.ops.core import OpenVINOKerasTensor
+from keras_openvino.src.ops.core import cast
 from keras_openvino.src.ops.core import convert_to_numpy
 from keras_openvino.src.ops.core import get_ov_output
+from keras_openvino.src.ops.core import shape_to_ov_output
 from keras_openvino.src.utils import OPENVINO_DTYPES
 
 
@@ -77,6 +80,17 @@ def _random_uniform(shape, minval, maxval, dtype, seed1, seed2):
     ).output(0)
 
 
+def _symbolic_shape(shape):
+    """Returns `shape` as an ov.Output if it has tensor dims, else None."""
+    if isinstance(shape, (list, tuple)):
+        if any(isinstance(d, (OpenVINOKerasTensor, ov.Output)) for d in shape):
+            return shape_to_ov_output(shape)
+        return None
+    if isinstance(shape, (OpenVINOKerasTensor, ov.Output)):
+        return get_ov_output(shape, Type.i32)
+    return None
+
+
 def normal(shape, mean=0.0, stddev=1.0, dtype=None, seed=None):
     dtype = dtype or config.floatx()
     seed_val = draw_seed(seed)
@@ -84,6 +98,13 @@ def normal(shape, mean=0.0, stddev=1.0, dtype=None, seed=None):
         seed_data = convert_to_numpy(seed_val)
     else:
         seed_data = seed_val.data
+    shape_ov = _symbolic_shape(shape)
+    if shape_ov is not None:
+        seed1, seed2 = seed_data
+        z = _random_normal(shape_ov, OPENVINO_DTYPES[dtype], seed1, seed2)
+        z = ov_opset.multiply(z, cast(stddev, dtype).output).output(0)
+        z = ov_opset.add(z, cast(mean, dtype).output).output(0)
+        return OpenVINOKerasTensor(z)
     rng = _rng_from_seed_data(seed_data)
     normal_const = rng.normal(size=shape, loc=mean, scale=stddev).astype(dtype)
     return OpenVINOKerasTensor(_np_to_ov_const(normal_const))
@@ -96,6 +117,15 @@ def uniform(shape, minval=0.0, maxval=1.0, dtype=None, seed=None):
         seed_data = convert_to_numpy(seed_val)
     else:
         seed_data = seed_val.data
+    shape_ov = _symbolic_shape(shape)
+    if shape_ov is not None:
+        seed1, seed2 = seed_data
+        minval = cast(minval, dtype).output
+        maxval = cast(maxval, dtype).output
+        rand = _random_uniform(
+            shape_ov, minval, maxval, OPENVINO_DTYPES[dtype], seed1, seed2
+        )
+        return OpenVINOKerasTensor(rand)
     rng = _rng_from_seed_data(seed_data)
     random_values = rng.uniform(minval, maxval, size=shape).astype(dtype)
     return OpenVINOKerasTensor(_np_to_ov_const(random_values))
@@ -172,7 +202,7 @@ def randint(shape, minval, maxval, dtype="int32", seed=None):
     else:
         gen_dtype = Type.i32
     if isinstance(shape, (list, tuple)):
-        shape = ov_opset.constant(list(shape), Type.i32).output(0)
+        shape = shape_to_ov_output(shape)
     elif isinstance(shape, OpenVINOKerasTensor):
         shape = shape.output
     elif isinstance(shape, int):
