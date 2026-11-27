@@ -646,6 +646,9 @@ def get_ov_output(x, ov_type=None, context_dtype=None):
         else:
             x = ov_opset.constant(x).output(0)
     elif isinstance(x, (list, tuple)):
+        if _has_tensors(x):
+            dtype = None if ov_type is None else ov_to_keras_type(ov_type)
+            return convert_to_tensor(x, dtype).output
         if isinstance(x, tuple):
             x = list(x)
         if ov_type is None:
@@ -669,6 +672,21 @@ def get_ov_output(x, ov_type=None, context_dtype=None):
             "unsupported type of `x` to create ov.Output: {}".format(type(x))
         )
     return x
+
+
+def _has_tensors(x):
+    return any(isinstance(e, OpenVINOKerasTensor) for e in tree.flatten(x))
+
+
+def _stack_nested(x, ov_type):
+    if not isinstance(x, (list, tuple)):
+        x = get_ov_output(x, ov_type)
+        if x.get_element_type() != ov_type:
+            x = ov_opset.convert(x, ov_type).output(0)
+        return x
+    axis = ov_opset.constant([0], Type.i32).output(0)
+    parts = [ov_opset.unsqueeze(_stack_nested(e, ov_type), axis) for e in x]
+    return ov_opset.concat(parts, 0).output(0)
 
 
 def shape_to_ov_output(shape):
@@ -743,6 +761,8 @@ def convert_to_tensor(x, dtype=None, sparse=None, ragged=None):
                     for item in tree.flatten(x)
                 ]
             )
+        if _has_tensors(x):
+            return OpenVINOKerasTensor(_stack_nested(x, OPENVINO_DTYPES[dtype]))
         x = np.array(x, dtype=dtype)
         ov_type = OPENVINO_DTYPES[dtype]
         return OpenVINOKerasTensor(ov_opset.constant(x, ov_type).output(0), x)

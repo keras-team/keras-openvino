@@ -181,11 +181,7 @@ keras_hub/src/models/modern_bert/modern_bert_text_classifier_preprocessor_test.p
 keras_hub/src/models/modern_bert/modern_bert_text_classifier_test.py
 keras_hub/src/models/modern_bert/modern_bert_text_embedder_preprocessor_test.py
 keras_hub/src/models/modern_bert/modern_bert_tokenizer_test.py
-keras_hub/src/models/moonshine/moonshine_audio_converter_test.py
-keras_hub/src/models/moonshine/moonshine_audio_to_text_preprocessor_test.py
-keras_hub/src/models/moonshine/moonshine_backbone_test.py
-keras_hub/src/models/moonshine/moonshine_layers_test.py
-keras_hub/src/models/moonshine/moonshine_tokenizer_test.py
+keras_hub/src/models/moonshine
 keras_hub/src/models/mpnet
 keras_hub/src/models/muse_glimmer/muse_glimmer_assistant_causal_lm_test.py
 keras_hub/src/models/muse_glimmer/muse_glimmer_attention_test.py
